@@ -1,0 +1,56 @@
+# ── Secrets & Zugangsdaten ─────────────────────────────
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets.*
+credentials.*
+
+# ── Python ────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Virtuelle Umgebungen ──────────────────────────────
+venv/
+.venv/
+env/
+
+# ── Jupyter ───────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── Daten-Caches & Rohdaten ───────────────────────────
+cache/
+.cache/
+data/raw/
+*.parquet
+*.feather
+*.pkl
+*.sqlite
+*.db
+
+# ── Große Dateien & 3D-Modelle (gehören nicht ins Repo) ─
+*.glb
+*.gltf
+*.blend
+*.blend1
+*.fbx
+*.zip
+
+# ── Zwischenergebnisse ────────────────────────────────
+tmp/
+scratch/
+*.log
+
+# ── Editor & Betriebssystem ───────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
