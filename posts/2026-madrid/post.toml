@@ -1,0 +1,11 @@
+# Probe-Post: Spanish GP 2026, Madring
+
+[session]
+meeting_key = 1294       # ← deinen Madrid-Key eintragen (Zahl, ohne Anführungszeichen)
+type = "R"
+
+[[slides]]
+analysis = "gap_between"
+drivers  = ["ANT", "NOR"]
+title    = "Did the VSC decide Madrid?"
+subtitle = "Gap Antonelli ↔ Norris, lap by lap · grey band = VSC"

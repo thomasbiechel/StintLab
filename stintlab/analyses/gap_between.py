@@ -1,67 +1,56 @@
 """Abstand zwischen zwei Fahrern, Runde für Runde.
 
-Beantwortet Fragen wie: "Wie knapp war es vor dem Stopp, und was hat das
-VSC am Abstand verändert?"
+METHODE: Der Abstand nach Runde N ist die Zeitdifferenz, mit der beide Fahrer
+die Ziellinie am Ende von Runde N überqueren. Das ist genau der Abstand, den
+eine Zeitnahme an der Linie messen würde.
 
-Zwei getrennte Teile:
-- compute_gap_between(): reine Rechnung, ohne Matplotlib – dadurch testbar.
-- render_gap_between(): zeichnet das Ergebnis auf eine Achse.
+Bewusst NICHT verwendet: die Differenz zweier "Gap to Leader"-Werte. Die
+werden für jeden Fahrer zu einem eigenen Zeitpunkt abgelesen. Wechselt
+dazwischen der Führende (z. B. weil er an die Box fährt), beziehen sich die
+beiden Werte auf verschiedene Führende, und die Differenz ist falsch.
 
-VORZEICHEN (fest, nicht verhandelbar):
+VORZEICHEN (fest):
     gap > 0  →  driver_a liegt VOR driver_b, um gap Sekunden
     gap < 0  →  driver_a liegt HINTER driver_b
 """
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from stintlab.race_control import restricted_laps
 from stintlab.style import COLORS, style_axes, team_color
 
 
-def compute_gap_between(gap_to_leader: list[dict], driver_a: str, driver_b: str) -> dict[int, float]:
-    """{Runde: Abstand} zwischen zwei Fahrern aus den Gap-to-Leader-Daten.
+def compute_gap_between(lap_ends: dict[str, dict[int, datetime]],
+                        driver_a: str, driver_b: str) -> dict[int, float]:
+    """{Runde: Abstand in Sekunden} aus den Zeitpunkten der Zieldurchfahrt.
 
-    gap_to_leader: Einträge wie {"Driver": "NOR", "LapNumber": 12, "Gap": 1.4}
-    Gap = Rückstand auf den Führenden in Sekunden (Führender = 0).
-
-    Wer weniger Rückstand auf den Führenden hat, liegt vorne. Daher:
-        gap = Rückstand_b - Rückstand_a
-    Runden, in denen einer der beiden keinen Wert hat, werden ausgelassen.
+    Wer die Linie früher überquert, liegt vorne:
+        gap = Durchfahrt_b - Durchfahrt_a
+    Runden, die einer der beiden nicht beendet hat, werden ausgelassen.
     """
-    by_driver: dict[str, dict[int, float]] = {driver_a: {}, driver_b: {}}
-    for row in gap_to_leader:
-        drv = row.get("Driver")
-        if drv in by_driver and row.get("Gap") is not None:
-            by_driver[drv][row["LapNumber"]] = float(row["Gap"])
-
-    common_laps = sorted(set(by_driver[driver_a]) & set(by_driver[driver_b]))
-    return {lap: by_driver[driver_b][lap] - by_driver[driver_a][lap] for lap in common_laps}
+    a, b = lap_ends.get(driver_a, {}), lap_ends.get(driver_b, {})
+    return {lap: (b[lap] - a[lap]).total_seconds() for lap in sorted(set(a) & set(b))}
 
 
 def render_gap_between(ax, data: dict, driver_a: str, driver_b: str) -> dict[int, float]:
     """Zeichnet den Abstand driver_a ↔ driver_b auf ax. Gibt die Werte zurück.
 
-    Erwartet in data:
-      "gap_to_leader": siehe compute_gap_between
-      "race_control":  siehe stintlab.race_control
-      "pit_stops":     Einträge wie {"driver": "NOR", "lap": 23}
-      "teams":         {"NOR": "McLaren", "ANT": "Mercedes"}  (optional –
-                       sonst aus data["laps_valid"] gelesen, wie im Analyser)
+    Erwartet in data (siehe stintlab.session):
+      "lap_ends", "race_control", "pit_stops", "teams"
     """
-    gaps = compute_gap_between(data.get("gap_to_leader", []), driver_a, driver_b)
+    gaps = compute_gap_between(data.get("lap_ends", {}), driver_a, driver_b)
     if len(gaps) < 3:
         raise ValueError(f"Zu wenige gemeinsame Runden für {driver_a} und {driver_b}")
 
-    teams = data.get("teams") or {
-        lap["Driver"]: lap["Team"] for lap in data.get("laps_valid", []) if lap.get("Team")
-    }
+    teams = data.get("teams", {})
     color_a = team_color(teams.get(driver_a))
     color_b = team_color(teams.get(driver_b))
 
     style_axes(ax, grid_axis="y")
 
-    # Neutralisierte Runden grau hinterlegen – der Abstand schrumpft dort,
-    # ohne dass jemand schneller fährt
+    # Neutralisierte Runden grau hinterlegen
     for lap in sorted(restricted_laps(data.get("race_control", []))):
         ax.axvspan(lap - 0.5, lap + 0.5, color=COLORS["muted"], alpha=0.15, linewidth=0)
 
@@ -76,22 +65,23 @@ def render_gap_between(ax, data: dict, driver_a: str, driver_b: str) -> dict[int
     ax.plot(laps, values, color=COLORS["text"], linewidth=1.4)
     ax.axhline(0, color=COLORS["muted"], linewidth=0.8)
 
-    # Boxenstopps der beiden Fahrer markieren
+    # Boxenstopps: Beschriftung von driver_a nach links, von driver_b nach
+    # rechts, damit sie sich bei nahen Stopps nicht überlagern
     for stop in data.get("pit_stops", []):
         drv, lap = stop.get("driver"), stop.get("lap")
         if drv in (driver_a, driver_b) and lap in gaps:
-            color = color_a if drv == driver_a else color_b
+            is_a = drv == driver_a
+            color = color_a if is_a else color_b
             ax.scatter([lap], [gaps[lap]], s=45, color=color, zorder=5,
                        edgecolor=COLORS["bg"], linewidth=1)
-            ax.annotate(f"{drv} pit", (lap, gaps[lap]), xytext=(0, 10),
-                        textcoords="offset points", ha="center",
-                        fontsize=8, color=color, fontweight="bold")
+            ax.annotate(f"{drv} pit", (lap, gaps[lap]), xytext=(-8 if is_a else 8, 0),
+                        textcoords="offset points", ha="right" if is_a else "left",
+                        va="center", fontsize=8, color=color, fontweight="bold")
 
     # Symmetrische y-Achse, damit "vorne" und "hinten" gleich viel Platz haben
     limit = max(abs(v) for v in values) * 1.25
     ax.set_ylim(-limit, limit)
 
-    # Beschriftung macht das Vorzeichen unmissverständlich
     ax.text(0.01, 0.97, f"▲ {driver_a} ahead", transform=ax.transAxes,
             color=color_a, fontsize=9, fontweight="bold", va="top")
     ax.text(0.01, 0.03, f"▼ {driver_b} ahead", transform=ax.transAxes,

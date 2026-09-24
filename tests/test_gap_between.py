@@ -1,26 +1,31 @@
 """Tests für die Vorzeichen-Konvention – genau hier gab es im PDF-Report schon Fehler."""
 
+from datetime import datetime, timedelta, timezone
+
 from stintlab.analyses.gap_between import compute_gap_between
 from stintlab.race_control import restricted_laps
 
+T0 = datetime(2026, 9, 13, 13, 0, tzinfo=timezone.utc)
+
 
 def test_driver_a_ahead_gives_positive_gap():
-    # NOR führt (Gap 0), ANT liegt 1,5 s dahinter
-    rows = [
-        {"Driver": "NOR", "LapNumber": 1, "Gap": 0.0},
-        {"Driver": "ANT", "LapNumber": 1, "Gap": 1.5},
-    ]
-    assert compute_gap_between(rows, "NOR", "ANT") == {1: 1.5}
-    assert compute_gap_between(rows, "ANT", "NOR") == {1: -1.5}
+    # NOR überquert die Linie 1,5 s vor ANT
+    ends = {"NOR": {1: T0}, "ANT": {1: T0 + timedelta(seconds=1.5)}}
+    assert compute_gap_between(ends, "NOR", "ANT") == {1: 1.5}
+    assert compute_gap_between(ends, "ANT", "NOR") == {1: -1.5}
 
 
 def test_laps_missing_for_one_driver_are_skipped():
-    rows = [
-        {"Driver": "NOR", "LapNumber": 1, "Gap": 0.0},
-        {"Driver": "ANT", "LapNumber": 1, "Gap": 1.0},
-        {"Driver": "NOR", "LapNumber": 2, "Gap": 0.0},  # ANT fehlt in Runde 2
-    ]
-    assert compute_gap_between(rows, "NOR", "ANT") == {1: 1.0}
+    ends = {"NOR": {1: T0, 2: T0 + timedelta(seconds=90)},
+            "ANT": {1: T0 + timedelta(seconds=1)}}  # ANT ohne Runde 2
+    assert compute_gap_between(ends, "NOR", "ANT") == {1: 1.0}
+
+
+def test_leader_change_between_crossings_does_not_matter():
+    # Genau der Fehlerfall der Gap-to-Leader-Differenz: Dazwischen fährt der
+    # Führende an die Box. Mit Zieldurchfahrten spielt das keine Rolle.
+    ends = {"ANT": {46: T0}, "NOR": {46: T0 + timedelta(seconds=3.4)}}
+    assert compute_gap_between(ends, "ANT", "NOR") == {46: 3.4}
 
 
 def test_vsc_marks_all_laps_from_deploy_to_ending():
