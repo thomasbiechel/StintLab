@@ -69,7 +69,11 @@ def _fmt(seconds: float, decimals: int = 1) -> str:
 
 
 def render_lap_times(ax, data: dict, drivers: list[str],
-                     laps: tuple[int, int] | None = None) -> dict[str, dict[int, float]]:
+                     laps: tuple[int, int] | None = None,
+                     show_median: bool = True) -> dict[str, dict[int, float]]:
+    """show_median: Median jedes Fahrers in der Legende anzeigen. Abschalten,
+    wenn Titel oder Untertitel mit Werten einer Teilphase argumentieren –
+    sonst widersprechen sich die Zahlen scheinbar."""
     times = clean_lap_times(data, drivers, laps)
     if not any(times.values()):
         raise ValueError(f"Keine gültigen Rundenzeiten für {drivers}")
@@ -85,7 +89,7 @@ def render_lap_times(ax, data: dict, drivers: list[str],
         color = team_color(teams.get(drv))
         ax.scatter(xs, ys, s=10, color=color, alpha=0.3, linewidth=0)
         # Linie an Lücken (Boxenstopp, VSC) unterbrechen, statt sie zu überbrücken
-        label = f"{drv} · median {_fmt(float(np.median(ys)))}"
+        label = f"{drv} · median {_fmt(float(np.median(ys)))}" if show_median else drv
         for segment in _consecutive_runs(xs):
             seg_ys = [series[x] for x in segment]
             ax.plot(segment, rolling_median(seg_ys), color=color, linewidth=1.8, label=label)

@@ -25,7 +25,7 @@ COLORS = {
     "text": "#e9e9ed",     # Haupttext
     "muted": "#8a8a92",    # Untertitel, Achsen, Quelle
     "grid": "#26262e",     # Gitternetz
-    "accent": "#ff5a1f",   # PLATZHALTER – eigene StintLab-Farbe festlegen
+    "accent": "#a855f7",   # StintLab-Lila ("schnellster Sektor"), kein Team, keine Mischung
 }
 
 # Offizielle team_colour-Werte von OpenF1 (/drivers), Saison 2026

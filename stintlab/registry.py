@@ -37,7 +37,10 @@ def _lap_times(ax, data, slide):
         raise ValueError("lap_times braucht mindestens einen Fahrer, z. B. drivers = [\"NOR\"]")
     if laps is not None and len(laps) != 2:
         raise ValueError("laps braucht genau zwei Werte, z. B. laps = [16, 57]")
-    render_lap_times(ax, data, drivers, tuple(laps) if laps else None)
+    show_median = slide.get("show_median", True)
+    if not isinstance(show_median, bool):
+        raise ValueError("show_median muss true oder false sein (klein geschrieben, ohne Anführungszeichen)")
+    render_lap_times(ax, data, drivers, tuple(laps) if laps else None, show_median)
 
 
 ANALYSES = {

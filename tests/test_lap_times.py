@@ -36,3 +36,23 @@ def test_rolling_median_ignores_single_outlier():
 def test_consecutive_runs_split_at_gaps():
     from stintlab.analyses.lap_times import _consecutive_runs
     assert _consecutive_runs([16, 17, 18, 21, 22]) == [[16, 17, 18], [21, 22]]
+
+
+def test_legend_without_median():
+    import matplotlib.pyplot as plt
+    from stintlab.analyses.lap_times import render_lap_times
+    data = make_data()
+    _, ax = plt.subplots()
+    render_lap_times(ax, data, ["NOR"], show_median=False)
+    assert [t.get_text() for t in ax.get_legend().get_texts()] == ["NOR"]
+    plt.close("all")
+
+
+def test_show_median_must_be_boolean():
+    import matplotlib.pyplot as plt
+    import pytest
+    from stintlab.registry import ANALYSES
+    _, ax = plt.subplots()
+    with pytest.raises(ValueError, match="true oder false"):
+        ANALYSES["lap_times"]["render"](ax, make_data(), {"drivers": ["NOR"], "show_median": "false"})
+    plt.close("all")
