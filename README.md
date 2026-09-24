@@ -5,7 +5,7 @@ Formula 1 race data, explained — one question per session.
 StintLab turns raw timing and telemetry data into focused analyses:
 long-run pace in practice, where time was lost in qualifying,
 and how stints and strategies played out in the race.
-Each analysis is published as an Instagram carousel (@stintlab)
+Each analysis is published as an Instagram carousel ([@stint_lab](https://www.instagram.com/stint_lab/))
 and documented here with its method and limitations.
 
 ## Structure
