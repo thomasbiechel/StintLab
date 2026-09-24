@@ -15,14 +15,38 @@ import matplotlib.pyplot as plt
 WIDTH_PX, HEIGHT_PX, DPI = 1080, 1350, 150
 FIGSIZE = (WIDTH_PX / DPI, HEIGHT_PX / DPI)  # (7.2, 9.0) Zoll
 
-# ── Farben (Platzhalter – durch deine Palette aus dem PDF-Report ersetzen) ─
+# ── Farben (übernommen aus report_style.py des F1 Data Analyser) ───────
+# Regel: Daten werden IMMER in Teamfarben gezeichnet. Die Akzentfarbe ist nur
+# für Marke und neutrale Hervorhebungen da – sonst verwechselt man sie mit
+# einem Team (z. B. Orange = McLaren) oder einer Reifenmischung (Rot = Soft).
 COLORS = {
-    "bg": "#0f1115",       # Hintergrund
-    "text": "#f2f2f2",     # Haupttext
-    "muted": "#9aa0a6",    # Untertitel, Achsen, Quelle
-    "grid": "#2a2f36",     # Gitternetz
-    "accent": "#ff5a1f",   # Hervorhebung (bewusst kein F1-Rot)
+    "bg": "#0a0a0a",       # Hintergrund der Slide
+    "plot": "#141418",     # Hintergrund der Zeichenfläche
+    "text": "#e9e9ed",     # Haupttext
+    "muted": "#8a8a92",    # Untertitel, Achsen, Quelle
+    "grid": "#26262e",     # Gitternetz
+    "accent": "#ff5a1f",   # PLATZHALTER – eigene StintLab-Farbe festlegen
 }
+
+# Offizielle team_colour-Werte von OpenF1 (/drivers), Saison 2026
+TEAM_COLORS = {
+    "Alpine": "#00A1E8",
+    "Aston Martin": "#229971",
+    "Audi": "#F50537",
+    "Cadillac": "#909090",
+    "Ferrari": "#ED1131",
+    "Haas F1 Team": "#9C9FA2",
+    "McLaren": "#F47600",
+    "Mercedes": "#00D7B6",
+    "Racing Bulls": "#6C98FF",
+    "Red Bull Racing": "#4781D7",
+    "Williams": "#1868DB",
+}
+
+
+def team_color(team):
+    """Teamfarbe als Hex-Wert – neutrales Grau für unbekannte Teams."""
+    return TEAM_COLORS.get(team or "", COLORS["muted"])
 
 # Inter, falls installiert – sonst Fallback auf Windows- bzw. Standardschrift
 FONT_FAMILY = ["Inter", "Segoe UI", "DejaVu Sans"]
@@ -34,7 +58,7 @@ def apply_theme():
         "font.family": "sans-serif",
         "font.sans-serif": FONT_FAMILY,
         "figure.facecolor": COLORS["bg"],
-        "axes.facecolor": COLORS["bg"],
+        "axes.facecolor": COLORS["plot"],
         "axes.edgecolor": COLORS["grid"],
         "axes.labelcolor": COLORS["muted"],
         "axes.grid": True,
@@ -48,6 +72,18 @@ def apply_theme():
         "legend.frameon": False,
         "legend.labelcolor": COLORS["text"],
     })
+
+
+def style_axes(ax, grid_axis="y"):
+    """Einheitlicher Achsen-Look: nur die untere Achsenlinie, dezentes Gitter."""
+    for side in ("top", "right", "left"):
+        ax.spines[side].set_visible(False)
+    ax.spines["bottom"].set_color(COLORS["grid"])
+    ax.tick_params(colors=COLORS["muted"], labelsize=9)
+    ax.grid(False)
+    if grid_axis:
+        ax.grid(axis=grid_axis, color=COLORS["grid"], linewidth=0.6)
+    ax.set_axisbelow(True)
 
 
 def new_slide(title, subtitle="", source="Data: OpenF1"):
