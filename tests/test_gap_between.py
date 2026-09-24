@@ -29,3 +29,23 @@ def test_vsc_marks_all_laps_from_deploy_to_ending():
         {"lap": 22, "category": "SafetyCar", "message": "VIRTUAL SAFETY CAR ENDING"},
     ]
     assert restricted_laps(msgs) == {20, 21, 22}
+
+
+def test_madrid_vsc_format_is_detected():
+    # Echtes Format aus den Madrid-Daten 2026: abgekürzt "VSC"
+    msgs = [
+        {"lap": 14, "category": "SafetyCar", "flag": None, "message": "VSC DEPLOYED"},
+        {"lap": 15, "category": "Flag", "flag": "CLEAR", "message": "CLEAR IN TRACK SECTOR 22"},
+        {"lap": 15, "category": "SafetyCar", "flag": None, "message": "VSC ENDING"},
+    ]
+    assert restricted_laps(msgs) == {14, 15}
+
+
+def test_sector_clear_does_not_end_safety_car_early():
+    # Safety Car von Runde 20 bis 25, zwischendurch wird ein Sektor freigegeben
+    msgs = [
+        {"lap": 20, "category": "SafetyCar", "flag": None, "message": "SAFETY CAR DEPLOYED"},
+        {"lap": 21, "category": "Flag", "flag": "CLEAR", "message": "CLEAR IN TRACK SECTOR 7"},
+        {"lap": 25, "category": "SafetyCar", "flag": None, "message": "SAFETY CAR IN THIS LAP"},
+    ]
+    assert restricted_laps(msgs) == {20, 21, 22, 23, 24, 25}

@@ -17,9 +17,16 @@ from __future__ import annotations
 
 
 def restricted_laps(race_control: list[dict]) -> set[int]:
-    """Rundennummern unter SC, VSC oder roter Flagge."""
+    """Rundennummern unter SC, VSC oder roter Flagge.
+
+    Abweichung vom Original im Analyser: Es wird gemerkt, WELCHE Art von
+    Unterbrechung läuft. Ein SC/VSC endet nur durch seine eigene Ende-Meldung.
+    Grüne/Clear-Flaggen beenden nur eine rote Flagge – und auch nur, wenn sie
+    für die ganze Strecke gelten, nicht für einen einzelnen Sektor. Sonst würde
+    "CLEAR IN TRACK SECTOR 7" mitten in einer SC-Phase diese vorzeitig beenden.
+    """
     restricted: set[int] = set()
-    active = False
+    active_kind: str | None = None   # None, "SC" (gilt auch für VSC) oder "RED"
     start_lap: int | None = None
 
     for msg in race_control:
@@ -30,25 +37,24 @@ def restricted_laps(race_control: list[dict]) -> set[int]:
         flag = (msg.get("flag") or "").strip().upper()
         text = (msg.get("message") or "").upper()
 
-        is_start = (
-            (category == "SafetyCar" and "DEPLOYED" in text)
-            or (category == "Flag" and flag == "RED")
-        )
-        is_end = (
-            (category == "SafetyCar" and ("IN THIS LAP" in text or "ENDING" in text))
-            or (category == "Flag" and flag in ("GREEN", "CLEAR") and active)
-        )
+        if active_kind is None:
+            if category == "SafetyCar" and "DEPLOYED" in text:
+                active_kind, start_lap = "SC", lap
+            elif category == "Flag" and flag == "RED":
+                active_kind, start_lap = "RED", lap
+            continue
 
-        if is_start and not active:
-            active = True
-            start_lap = lap
-        elif is_end and active:
+        sc_ends = (active_kind == "SC" and category == "SafetyCar"
+                   and ("IN THIS LAP" in text or "ENDING" in text))
+        red_ends = (active_kind == "RED" and category == "Flag"
+                    and flag in ("GREEN", "CLEAR") and "SECTOR" not in text)
+
+        if sc_ends or red_ends:
             restricted.update(range(start_lap, lap + 1))
-            active = False
-            start_lap = None
+            active_kind, start_lap = None, None
 
     # Phase ohne Ende-Meldung (z. B. Rennende unter Neutralisation)
-    if active and start_lap is not None:
+    if active_kind is not None and start_lap is not None:
         last_lap = max((m.get("lap") or start_lap) for m in race_control)
         restricted.update(range(start_lap, last_lap + 1))
 
