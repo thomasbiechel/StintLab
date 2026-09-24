@@ -48,6 +48,10 @@ def team_color(team):
     """Teamfarbe als Hex-Wert – neutrales Grau für unbekannte Teams."""
     return TEAM_COLORS.get(team or "", COLORS["muted"])
 
+# Untertitel: Zeichen pro Zeile und maximale Zeilenzahl
+SUBTITLE_WIDTH = 88
+SUBTITLE_MAX_LINES = 2
+
 # Inter, falls installiert – sonst Fallback auf Windows- bzw. Standardschrift
 FONT_FAMILY = ["Inter", "Segoe UI", "DejaVu Sans"]
 
@@ -102,7 +106,16 @@ def new_slide(title, subtitle="", source="Data: OpenF1"):
     fig.text(0.06, 0.95, wrapped, fontsize=19, fontweight="bold",
              color=COLORS["text"], va="top", ha="left")
     if subtitle:
-        fig.text(0.06, 0.845, subtitle, fontsize=10.5,
+        # Untertitel umbrechen, aber höchstens zwei Zeilen – mehr liest auf
+        # Instagram niemand, und darunter beginnt schon die Grafik
+        lines = textwrap.wrap(subtitle, width=SUBTITLE_WIDTH)
+        if len(lines) > SUBTITLE_MAX_LINES:
+            raise ValueError(
+                f"Untertitel zu lang ({len(subtitle)} Zeichen, {len(lines)} Zeilen). "
+                f"Maximal {SUBTITLE_MAX_LINES} Zeilen à ~{SUBTITLE_WIDTH} Zeichen – bitte kürzen."
+            )
+        subtitle = "\n".join(lines)
+        fig.text(0.06, 0.845, subtitle, fontsize=10.5, linespacing=1.4,
                  color=COLORS["muted"], va="top", ha="left")
 
     # Fußzeile

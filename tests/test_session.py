@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from stintlab.session import assign_to_laps, build_session_data, order_mismatches
+from stintlab.session import assign_to_laps, build_session_data, sign_mismatches
 
 T0 = datetime(2026, 9, 13, 13, 0, tzinfo=timezone.utc)
 
@@ -50,9 +50,27 @@ def test_build_session_data_and_order_check():
     data = build_session_data(raw)
     assert data["teams"] == {"NOR": "McLaren", "ANT": "Mercedes"}
     assert {(r["Driver"], r["Gap"]) for r in data["gap_to_leader"]} == {("NOR", 0.0), ("ANT", 0.8)}
-    assert order_mismatches(data) == []
+    assert sign_mismatches(data, "NOR", "ANT") == []
 
     # Positionen vertauscht → muss als Widerspruch erkannt werden
     raw["position"] = [{"driver_number": 4, "date": iso(5), "position": 2},
                        {"driver_number": 12, "date": iso(5), "position": 1}]
-    assert order_mismatches(build_session_data(raw)) == [1]
+    assert sign_mismatches(build_session_data(raw), "NOR", "ANT") == [(1, False)]
+
+    # Dieselbe Abweichung in einer Boxenstopp-Runde wird als solche markiert
+    raw["pit"] = [{"driver_number": 12, "lap_number": 1, "pit_duration": 30.0}]
+    assert sign_mismatches(build_session_data(raw), "NOR", "ANT") == [(1, True)]
+
+
+def test_stints_are_mapped_to_driver_abbreviations():
+    raw = {
+        "drivers": [{"driver_number": 16, "name_acronym": "LEC", "team_name": "Ferrari"}],
+        "laps": [], "intervals": [], "position": [], "race_control": [], "pit": [],
+        "stints": [{"driver_number": 16, "stint_number": 2, "compound": "hard",
+                    "lap_start": 49, "lap_end": 57, "tyre_age_at_start": 0},
+                   {"driver_number": 16, "stint_number": 1, "compound": "MEDIUM",
+                    "lap_start": 1, "lap_end": 48, "tyre_age_at_start": 0}],
+    }
+    stints = build_session_data(raw)["stints"]
+    assert [(s["driver"], s["stint"], s["compound"]) for s in stints] == [
+        ("LEC", 1, "MEDIUM"), ("LEC", 2, "HARD")]

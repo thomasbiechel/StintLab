@@ -34,13 +34,20 @@ def compute_gap_between(lap_ends: dict[str, dict[int, datetime]],
     return {lap: (b[lap] - a[lap]).total_seconds() for lap in sorted(set(a) & set(b))}
 
 
-def render_gap_between(ax, data: dict, driver_a: str, driver_b: str) -> dict[int, float]:
+def render_gap_between(ax, data: dict, driver_a: str, driver_b: str,
+                       laps: tuple[int, int] | None = None) -> dict[int, float]:
     """Zeichnet den Abstand driver_a ↔ driver_b auf ax. Gibt die Werte zurück.
+
+    laps: optionales Fenster (erste, letzte Runde), z. B. (15, 48), um eine
+          Phase des Rennens herauszuzoomen.
 
     Erwartet in data (siehe stintlab.session):
       "lap_ends", "race_control", "pit_stops", "teams"
     """
     gaps = compute_gap_between(data.get("lap_ends", {}), driver_a, driver_b)
+    if laps:
+        first, last = laps
+        gaps = {n: g for n, g in gaps.items() if first <= n <= last}
     if len(gaps) < 3:
         raise ValueError(f"Zu wenige gemeinsame Runden für {driver_a} und {driver_b}")
 
@@ -52,6 +59,8 @@ def render_gap_between(ax, data: dict, driver_a: str, driver_b: str) -> dict[int
 
     # Neutralisierte Runden grau hinterlegen
     for lap in sorted(restricted_laps(data.get("race_control", []))):
+        if lap not in gaps:
+            continue
         ax.axvspan(lap - 0.5, lap + 0.5, color=COLORS["muted"], alpha=0.15, linewidth=0)
 
     laps = list(gaps)
@@ -74,18 +83,30 @@ def render_gap_between(ax, data: dict, driver_a: str, driver_b: str) -> dict[int
             color = color_a if is_a else color_b
             ax.scatter([lap], [gaps[lap]], s=45, color=color, zorder=5,
                        edgecolor=COLORS["bg"], linewidth=1)
-            ax.annotate(f"{drv} pit", (lap, gaps[lap]), xytext=(-8 if is_a else 8, 0),
+            label = f"{drv} pit"
+            if stop.get("duration"):
+                label += f" · {stop['duration']:.1f} s"
+            ax.annotate(label, (lap, gaps[lap]), xytext=(-8 if is_a else 8, 0),
                         textcoords="offset points", ha="right" if is_a else "left",
                         va="center", fontsize=8, color=color, fontweight="bold")
 
-    # Symmetrische y-Achse, damit "vorne" und "hinten" gleich viel Platz haben
+    # y-Achse: symmetrisch, wenn die Führung wechselt – sonst nur die Seite,
+    # auf der die Werte liegen, damit keine halbe Grafik leer bleibt
     limit = max(abs(v) for v in values) * 1.25
-    ax.set_ylim(-limit, limit)
+    margin = limit * 0.12  # etwas Platz für die Beschriftung auf der leeren Seite
+    if min(values) >= 0:
+        ax.set_ylim(-margin, limit)
+    elif max(values) <= 0:
+        ax.set_ylim(-limit, margin)
+    else:
+        ax.set_ylim(-limit, limit)
 
-    ax.text(0.01, 0.97, f"▲ {driver_a} ahead", transform=ax.transAxes,
-            color=color_a, fontsize=9, fontweight="bold", va="top")
-    ax.text(0.01, 0.03, f"▼ {driver_b} ahead", transform=ax.transAxes,
-            color=color_b, fontsize=9, fontweight="bold", va="bottom")
+    if max(values) > 0:
+        ax.text(0.01, 0.97, f"▲ {driver_a} ahead", transform=ax.transAxes,
+                color=color_a, fontsize=9, fontweight="bold", va="top")
+    if min(values) < 0:
+        ax.text(0.01, 0.03, f"▼ {driver_b} ahead", transform=ax.transAxes,
+                color=color_b, fontsize=9, fontweight="bold", va="bottom")
     ax.set_xlabel("Lap")
     ax.set_ylabel(f"Gap {driver_a} ↔ {driver_b} (s)")
 

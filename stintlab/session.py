@@ -23,7 +23,7 @@ from stintlab import openf1
 # ausgeschieden oder überrundet und liefert keine Abstände mehr.
 STALE_AFTER_S = 150.0
 
-ENDPOINTS = ["drivers", "laps", "race_control", "pit", "position", "intervals"]
+ENDPOINTS = ["drivers", "laps", "race_control", "pit", "position", "intervals", "stints"]
 
 
 def _parse(ts: str | None) -> datetime | None:
@@ -147,6 +147,15 @@ def build_session_data(raw: dict[str, list[dict]]) -> dict:
              "flag": m.get("flag"), "message": m.get("message") or ""}
             for m in raw["race_control"]
         ],
+        # Reifen pro Stint: Mischung, Runden und Alter der Reifen beim Aufziehen
+        "stints": [
+            {"driver": abbr(st.get("driver_number")), "stint": st.get("stint_number"),
+             "compound": (st.get("compound") or "UNKNOWN").upper(),
+             "lap_start": st.get("lap_start"), "lap_end": st.get("lap_end"),
+             "tyre_age_at_start": st.get("tyre_age_at_start")}
+            for st in sorted(raw.get("stints", []),
+                             key=lambda x: (str(x.get("driver_number")), x.get("stint_number") or 0))
+        ],
         "pit_stops": [
             {"driver": abbr(p.get("driver_number")), "lap": p.get("lap_number"),
              "duration": p.get("pit_duration") or p.get("lane_duration")}
@@ -162,19 +171,28 @@ def load_session(meeting_key: int, session_type: str, refresh: bool = False) -> 
     return build_session_data(raw)
 
 
-def order_mismatches(data: dict, drivers: list[str] | None = None) -> list[int]:
-    """Plausibilitätstest: Runden, in denen die Reihenfolge nach Abstand nicht
-    zur Reihenfolge nach Position passt. Leer = Daten sind in sich stimmig."""
-    gap = {(r["Driver"], r["LapNumber"]): r["Gap"] for r in data["gap_to_leader"]}
+def sign_mismatches(data: dict, driver_a: str, driver_b: str) -> list[tuple[int, bool]]:
+    """Plausibilitätstest für genau das, was gap_between zeichnet.
+
+    Für jede Runde: Liegt laut Zieldurchfahrt derjenige vorne, der laut
+    Positionsdaten vorne liegt? Gibt [(Runde, Boxenstopp-Runde?), ...] der
+    Runden zurück, in denen beides nicht übereinstimmt. Leer = stimmig.
+
+    In Boxenstopp-Runden sind Abweichungen oft erklärbar: Die Linie in der
+    Boxengasse und die Positionsdaten werden nicht exakt gleichzeitig erfasst.
+    """
+    ends = data["lap_ends"]
     pos = {(r["Driver"], r["LapNumber"]): r["Position"] for r in data["positions"]}
-    laps = sorted({n for _, n in gap})
+    pit_laps = {(p["driver"], p["lap"]) for p in data["pit_stops"]}
+    a, b = ends.get(driver_a, {}), ends.get(driver_b, {})
+
     bad = []
-    for n in laps:
-        present = [d for (d, lap) in gap if lap == n and (d, n) in pos]
-        if drivers:
-            present = [d for d in present if d in drivers]
-        by_gap = sorted(present, key=lambda d: (gap[(d, n)], pos[(d, n)]))
-        by_pos = sorted(present, key=lambda d: pos[(d, n)])
-        if by_gap != by_pos:
-            bad.append(n)
+    for n in sorted(set(a) & set(b)):
+        if (driver_a, n) not in pos or (driver_b, n) not in pos:
+            continue
+        a_ahead_by_time = a[n] < b[n]
+        a_ahead_by_pos = pos[(driver_a, n)] < pos[(driver_b, n)]
+        if a_ahead_by_time != a_ahead_by_pos:
+            is_pit = (driver_a, n) in pit_laps or (driver_b, n) in pit_laps
+            bad.append((n, is_pit))
     return bad

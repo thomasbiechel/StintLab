@@ -11,7 +11,7 @@ import tomllib
 from pathlib import Path
 
 from stintlab.registry import ANALYSES
-from stintlab.session import load_session, order_mismatches
+from stintlab.session import load_session, sign_mismatches
 from stintlab.style import new_slide, save_slide
 
 
@@ -38,12 +38,18 @@ def main() -> None:
 
     data = load_session(session["meeting_key"], session["type"], refresh=args.refresh)
 
-    # Plausibilitätstest: Abstände müssen zur Reihenfolge der Positionen passen
-    drivers = sorted({d for s in config["slides"] for d in s.get("drivers", [])})
-    bad_laps = order_mismatches(data, drivers or None)
-    if bad_laps:
-        print(f"⚠ Abstand und Position widersprechen sich in Runde(n): {bad_laps}")
-        print("  Slides werden trotzdem erzeugt – vor dem Posten prüfen!")
+    # Plausibilitätstest: Passt der gezeichnete Abstand zu den Positionsdaten?
+    for slide in config["slides"]:
+        drivers = slide.get("drivers", [])
+        if slide["analysis"] != "gap_between" or len(drivers) != 2:
+            continue
+        bad = sign_mismatches(data, drivers[0], drivers[1])
+        pit = [n for n, is_pit in bad if is_pit]
+        other = [n for n, is_pit in bad if not is_pit]
+        if pit:
+            print(f"ℹ {drivers[0]}/{drivers[1]}: Abweichung nur in Boxenstopp-Runde(n) {pit} – meist erklärbar")
+        if other:
+            print(f"⚠ {drivers[0]}/{drivers[1]}: Abstand widerspricht Position in Runde(n) {other} – vor dem Posten prüfen!")
 
     out_dir = config_file.parent / "slides"
     for i, slide in enumerate(config["slides"], start=1):

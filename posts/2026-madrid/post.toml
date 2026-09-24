@@ -7,5 +7,26 @@ type = "R"
 [[slides]]
 analysis = "gap_between"
 drivers  = ["ANT", "NOR"]
-title    = "Did the VSC decide Madrid?"
-subtitle = "Gap Antonelli ↔ Norris, lap by lap · grey band = VSC"
+title    = "How big was the impact of the VSC in Madrid?"
+subtitle = "A 21.7 s swing in the pit cycle – about 3 s of it from Norris' slower stop"
+
+[[slides]]
+analysis = "gap_between"
+drivers  = ["LEC", "ANT"]
+laps = [16, 47]
+title    = "Stuck behind Leclerc – or saving tyres?"
+subtitle = "Antonelli held 1–4 s behind Leclerc for 32 laps while Norris closed from 15.6 s to 1.7 s"
+
+[[slides]]
+analysis = "pit_cycle"
+drivers  = ["ANT", "NOR"]
+laps     = [13, 16]
+title    = "Where did the 21.7 seconds come from?"
+subtitle = "Only 3.3 s came from the slower stop – the rest from when they stopped"
+
+[[slides]]
+analysis = "lap_times"
+drivers  = ["NOR", "ANT", "LEC"]
+laps     = [16, 57]
+title    = "Norris was 0.6 s a lap faster – until Leclerc pitted"
+subtitle = "Laps 33–47: Norris 0.6 s/lap quicker than Antonelli. Laps 50–57: Antonelli 0.4 s/lap quicker than both – on 35-lap-old Hards vs Leclerc's new Softs."
