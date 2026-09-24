@@ -18,9 +18,32 @@ and documented here with its method and limitations.
 Timing and telemetry data from OpenF1.
 Not affiliated with Formula 1, the FIA or any team.
 
-## Status
+## Requirements
 
-🚧 Work in progress — first analyses coming with the next races.
+Python 3.11+ and an OpenF1 account (for authenticated API access).
+
+## Setup
+
+    git clone https://github.com/thomasbiechel/StintLab.git
+    cd StintLab
+    python -m venv venv
+    venv\Scripts\activate
+    pip install -r requirements.txt
+    copy .env.example .env      # then add your OpenF1 username and password
+
+## Usage
+
+Each post is described by a `post.toml` (session, drivers, analyses, titles):
+
+    python make_post.py posts/2026-madrid/post.toml
+
+Data is loaded from OpenF1 once and cached in `data/cache/`.
+Before rendering, a plausibility check compares the plotted gaps
+against OpenF1 position data.
+
+## Tests
+
+    python -m pytest
 
 ## Author
 
