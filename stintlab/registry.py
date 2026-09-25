@@ -13,6 +13,7 @@ from stintlab.analyses.ideal_lap import render_ideal_lap
 from stintlab.analyses.lap_times import render_lap_times
 from stintlab.analyses.long_runs import render_long_runs
 from stintlab.analyses.pit_cycle import render_pit_cycle
+from stintlab.analyses.race_pace import render_driver_pace, render_team_pace
 from stintlab.analyses.results import render_results
 from stintlab.analyses.sectors import render_sectors
 from stintlab.analyses.telemetry import render_telemetry
@@ -74,6 +75,21 @@ def _telemetry(ax, data, slide):
     render_telemetry(ax, data, slide.get("drivers") or None, slide.get("compound"), slide.get("part"))
 
 
+def _min_laps(slide):
+    n = slide.get("min_laps", 10)
+    if not isinstance(n, int) or n < 3:
+        raise ValueError("min_laps muss eine ganze Zahl ab 3 sein")
+    return n
+
+
+def _driver_pace(ax, data, slide):
+    render_driver_pace(ax, data, _min_laps(slide))
+
+
+def _team_pace(ax, data, slide):
+    render_team_pace(ax, data, _min_laps(slide))
+
+
 def _results(ax, data, slide):
     render_results(ax, data)
 
@@ -87,4 +103,6 @@ ANALYSES = {
     "results": {"render": _results, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "sectors": {"render": _sectors, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
     "telemetry": {"render": _telemetry, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
+    "driver_pace": {"render": _driver_pace, "sessions": {"R", "S"}},
+    "team_pace": {"render": _team_pace, "sessions": {"R", "S"}},
 }
