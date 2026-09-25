@@ -1,0 +1,8 @@
+   [session]
+   meeting_key = 1295          # ← Baku-Key eintragen
+   type = "FP2"
+
+   [[slides]]
+   analysis = "long_runs"
+   title    = "TITEL FOLGT"
+   subtitle = "Median lap time of each driver's longest FP2 run · fuel loads unknown"

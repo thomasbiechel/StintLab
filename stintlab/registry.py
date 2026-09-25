@@ -10,6 +10,7 @@ Eine neue Analyse = neue Funktion in stintlab/analyses/ + ein Eintrag hier.
 
 from stintlab.analyses.gap_between import render_gap_between
 from stintlab.analyses.lap_times import render_lap_times
+from stintlab.analyses.long_runs import render_long_runs
 from stintlab.analyses.pit_cycle import render_pit_cycle
 
 
@@ -43,8 +44,16 @@ def _lap_times(ax, data, slide):
     render_lap_times(ax, data, drivers, tuple(laps) if laps else None, show_median)
 
 
+def _long_runs(ax, data, slide):
+    min_laps = slide.get("min_laps", 5)
+    if not isinstance(min_laps, int) or min_laps < 3:
+        raise ValueError("min_laps muss eine ganze Zahl ab 3 sein, z. B. min_laps = 5")
+    render_long_runs(ax, data, slide.get("drivers") or None, slide.get("compound"), min_laps)
+
+
 ANALYSES = {
     "gap_between": {"render": _gap_between, "sessions": {"R", "S"}},
     "pit_cycle": {"render": _pit_cycle, "sessions": {"R", "S"}},
     "lap_times": {"render": _lap_times, "sessions": {"R", "S", "FP1", "FP2", "FP3"}},
+    "long_runs": {"render": _long_runs, "sessions": {"FP1", "FP2", "FP3"}},
 }

@@ -1,0 +1,70 @@
+"""Tests für die Erkennung von Long Runs im Training."""
+
+from stintlab.analyses.long_runs import best_run_per_driver, find_long_runs
+
+
+def laps_for(driver, start, times, out_lap_before=True):
+    """Runden ab 'start'; davor eine Out-Lap, wie im Training üblich."""
+    laps = []
+    if out_lap_before:
+        laps.append({"Driver": driver, "LapNumber": start - 1, "LapTime": 130.0, "IsPitOutLap": True})
+    for i, t in enumerate(times):
+        laps.append({"Driver": driver, "LapNumber": start + i, "LapTime": t, "IsPitOutLap": False})
+    return laps
+
+
+def test_steady_run_is_found_with_outlier_removed():
+    times = [105.0, 105.1, 105.2, 108.9, 105.3, 105.4, 105.5]  # Runde 4: Verkehr
+    runs = find_long_runs({"laps": laps_for("LEC", 10, times)}, min_laps=5)
+    assert len(runs) == 1
+    assert len(runs[0]["laps"]) == 6                 # Ausreißer entfernt
+    assert runs[0]["deg_per_lap"] > 0                # Zeiten steigen leicht
+
+
+def test_quali_simulation_is_not_a_long_run():
+    times = [102.0, 125.0, 102.2, 125.0, 102.1, 125.0]  # schnell – abkühlen – schnell
+    assert find_long_runs({"laps": laps_for("NOR", 5, times)}, min_laps=5) == []
+
+
+def test_in_lap_before_out_lap_is_excluded():
+    laps = laps_for("ANT", 2, [105.0] * 6)
+    laps[-1]["LapTime"] = 118.0                       # letzte Runde = In-Lap …
+    laps.append({"Driver": "ANT", "LapNumber": 8, "LapTime": 140.0, "IsPitOutLap": True})  # … weil danach Out-Lap
+    runs = find_long_runs({"laps": laps}, min_laps=5)
+    assert runs[0]["laps"] == [2, 3, 4, 5, 6]
+
+
+def test_compound_filter_and_sorting():
+    data = {
+        "laps": laps_for("LEC", 10, [105.5] * 6) + laps_for("NOR", 10, [105.0] * 6),
+        "stints": [{"driver": "LEC", "compound": "MEDIUM", "lap_start": 1, "lap_end": 30},
+                   {"driver": "NOR", "compound": "HARD", "lap_start": 1, "lap_end": 30}],
+    }
+    runs = find_long_runs(data)
+    assert [r["driver"] for r in best_run_per_driver(runs)] == ["NOR", "LEC"]
+    assert [r["driver"] for r in best_run_per_driver(runs, "medium")] == ["LEC"]
+
+
+def test_diagnose_explains_rejection():
+    from stintlab.analyses.long_runs import diagnose
+    data = {"laps": laps_for("NOR", 5, [102.0, 125.0, 102.2, 125.0, 102.1, 125.0])
+                    + laps_for("LEC", 10, [105.0] * 3)}
+    lines = diagnose(data)
+    assert any(l.startswith("LEC") and "zu kurz" in l for l in lines)
+    assert any(l.startswith("NOR") and "Quali-Simulation" in l for l in lines)
+
+
+def test_red_flag_laps_at_end_are_cut_off():
+    # Russell, Baku FP2: 5 saubere Runden, dann rote Flagge
+    times = [113.0, 108.3, 107.9, 107.8, 107.8, 179.3, 165.0, 153.4]
+    runs = find_long_runs({"laps": laps_for("RUS", 17, times)}, min_laps=4)
+    assert len(runs) == 1
+    assert runs[0]["median"] < 109
+
+
+def test_run_with_some_traffic_in_the_middle_is_kept():
+    # Verstappen, Baku FP2: zwei langsame Runden in der Mitte, rote Flagge am Ende
+    times = [110.1, 108.3, 107.9, 117.9, 108.1, 125.4, 108.2, 148.0, 171.0, 151.3]
+    runs = find_long_runs({"laps": laps_for("VER", 14, times)}, min_laps=4)
+    assert len(runs) == 1
+    assert runs[0]["median"] < 109

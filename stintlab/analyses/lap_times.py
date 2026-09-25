@@ -98,7 +98,7 @@ def render_lap_times(ax, data: dict, drivers: list[str],
     # Achse auf den Bereich der Daten zoomen, schneller oben
     all_times = sorted(t for v in times.values() for t in v.values())
     low, high = all_times[0], all_times[-1]
-    pad = (high - low) * 0.1
+    pad = (high - low) * 0.1 or 0.5  # alle Zeiten gleich → trotzdem sinnvoller Bereich
     ax.set_ylim(high + pad, low - pad)
     ax.yaxis.set_major_formatter(lambda y, _: _fmt(y, decimals=2))
 
