@@ -6,7 +6,8 @@ result_mismatches() eine Plausibilitätsprüfung gegen die Rundendaten.
 JE SESSION andere Spalten – aktuell umgesetzt:
 - Training: Pos, Fahrer, Reifen der schnellsten Runde, Bestzeit, Abstand, Runden
 - Qualifying: Pos, Fahrer, Q1, Q2, Q3, Abstand zur Pole, Trennlinien
-Das Rennen folgt.
+- Rennen/Sprint: Pos, Fahrer, Startplatz, Plätze gewonnen/verloren, Abstand
+  bzw. Ausfall, Boxengassen-Durchfahrten, Punkte
 
 FARBEN: Fahrer in Teamfarbe. Lila (StintLab-Akzent) nur für die schnellste
 Runde der Session – in der Zeitnahme bedeutet Lila genau das.
@@ -56,6 +57,8 @@ def practice_rows(data: dict) -> list[dict]:
 def result_mismatches(data: dict) -> list[str]:
     """Plausibilitätsprüfung: offizielle Bestzeit vs. schnellste gültige Runde
     in den Rundendaten (ohne Out-Laps und gestrichene Runden). Leer = stimmig."""
+    if data.get("session_type") in RACE:
+        return race_mismatches(data)
     if data.get("session_type") not in PRACTICE:
         return []
     deleted = deleted_laps(data.get("race_control", []), data.get("laps", []), data.get("lap_ends", {}))
@@ -227,10 +230,110 @@ def render_qualifying(ax, data: dict) -> list[dict]:
     return rows
 
 
+RACE = {"R", "S"}
+
+
+def race_rows(data: dict) -> list[dict]:
+    """Ergebniszeilen fürs Rennen (Format geprüft am Madring 2026):
+    gap_to_leader ist eine Zahl (Sekunden) oder ein Text wie "+1 LAP";
+    Ausfälle haben position None und dnf True. Wertung: erst die Klassierten
+    nach Position, dann Ausfälle nach gefahrenen Runden (wie offiziell)."""
+    grid = data.get("grid", {})
+    pits: dict[str, int] = {}
+    for p in data.get("pit_stops", []):
+        pits[p["driver"]] = pits.get(p["driver"], 0) + 1
+    rows = []
+    for r in data.get("results", []):
+        start = grid.get(r["driver"])
+        pos = r["position"]
+        rows.append({"driver": r["driver"], "position": pos, "grid": start,
+                     "change": (start - pos) if start and pos else None,
+                     "gap": r["gap"], "duration": _num(r["duration"]), "laps": r["laps"],
+                     "points": r.get("points") or 0, "pits": pits.get(r["driver"], 0),
+                     "status": "DSQ" if r.get("dsq") else "DNS" if r.get("dns") else
+                               "DNF" if r.get("dnf") else None})
+    classified = sorted((x for x in rows if x["position"]), key=lambda x: x["position"])
+    out = sorted((x for x in rows if not x["position"]), key=lambda x: -(x["laps"] or 0))
+    return classified + out
+
+
+def _race_time(seconds: float) -> str:
+    h, rest = divmod(seconds, 3600)
+    m, s = divmod(rest, 60)
+    return f"{int(h)}:{int(m):02d}:{s:06.3f}"
+
+
+def render_race(ax, data: dict) -> list[dict]:
+    rows = race_rows(data)
+    if not rows:
+        raise ValueError("Kein Ergebnis von OpenF1 – das Rennen ist evtl. noch nicht klassifiziert. "
+                         "Ein paar Minuten warten und mit --refresh erneut versuchen")
+    teams = data.get("teams", {})
+    header = [("POS", 0.06, "right"), ("DRIVER", 0.125, "left"), ("GRID", 0.33, "right"),
+              ("+/–", 0.43, "right"), ("GAP", 0.70, "right"), ("PIT", 0.82, "right"), ("PTS", 0.97, "right")]
+    table = []
+    for r in rows:
+        tc = team_color(teams.get(r["driver"]))
+        if r["status"]:
+            gap = f"{r['status']} · {r['laps'] or 0} laps"
+        elif r["position"] == 1 and r["duration"]:
+            gap = _race_time(r["duration"])
+        elif isinstance(r["gap"], (int, float)):
+            gap = f"+{r['gap']:.3f}"
+        else:
+            gap = str(r["gap"] or "")
+        change = r["change"]
+        if change is None or change == 0:
+            ch = ("", COLORS["muted"], False) if change is None else ("–", COLORS["muted"], False)
+        else:
+            ch = (f"{'▲' if change > 0 else '▼'}{abs(change)}", COLORS["text"], False)
+        pts = r["points"]
+        table.append([("__stripe__", tc),
+                      (str(r["position"]) if r["position"] else "–", COLORS["muted"], False),
+                      (r["driver"], tc, True),
+                      (str(r["grid"]) if r["grid"] else "", COLORS["muted"], False),
+                      ch,
+                      (gap, COLORS["accent"] if r["position"] == 1 else
+                            COLORS["muted"] if r["status"] else COLORS["text"], r["position"] == 1),
+                      (str(r["pits"]), COLORS["muted"], False),
+                      (f"{pts:g}" if pts else "", COLORS["text"], bool(pts))])
+    in_race = sum(1 for r in rows if r["position"])
+    separators = {in_race - 1: "not classified"} if 0 < in_race < len(rows) else None
+    _table(ax, header, table, separators)
+    notes = []
+    if unclassified(data):
+        notes.append("No result: " + ", ".join(unclassified(data)))
+    notes.append("PIT = pit lane visits (incl. penalties) · +/– = places vs. starting grid")
+    ax.text(0.99, -0.02, "\n".join(notes), transform=ax.transAxes, ha="right", va="top",
+            fontsize=7.5, color=COLORS["muted"], linespacing=1.5)
+    return rows
+
+
+def race_mismatches(data: dict) -> list[str]:
+    """Plausibilität Rennen: Rundenzahl im Ergebnis vs. Rundendaten, und
+    ob zu jedem Klassierten ein Startplatz existiert."""
+    if data.get("session_type") not in RACE:
+        return []
+    done: dict[str, int] = {}
+    for lap in data.get("laps", []):
+        if lap.get("LapNumber"):
+            done[lap["Driver"]] = max(done.get(lap["Driver"], 0), lap["LapNumber"])
+    problems = []
+    for r in race_rows(data):
+        own = done.get(r["driver"])
+        if own is not None and r["laps"] is not None and abs(own - r["laps"]) > 1:
+            problems.append(f"{r['driver']}: {r['laps']} Runden laut Ergebnis, {own} in den Rundendaten")
+        if r["position"] and r["grid"] is None:
+            problems.append(f"{r['driver']}: kein Startplatz gefunden")
+    return problems
+
+
 def render_results(ax, data: dict) -> list[dict]:
     stype = data.get("session_type")
     if stype in PRACTICE:
         return render_practice(ax, data)
     if stype in QUALI:
         return render_qualifying(ax, data)
-    raise ValueError(f"Ergebnis-Slide für '{stype}' gibt es noch nicht – bisher Training und Qualifying")
+    if stype in RACE:
+        return render_race(ax, data)
+    raise ValueError(f"Ergebnis-Slide für '{stype}' gibt es nicht")

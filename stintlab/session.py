@@ -184,7 +184,22 @@ def load_session(meeting_key: int, session_type: str, refresh: bool = False) -> 
     data = build_session_data(raw)
     data["session_type"] = session_type
     data["session_key"] = session_key
+    data["grid"] = {}
+    # Startaufstellung: hängt bei OpenF1 am QUALIFYING, nicht am Rennen, und
+    # enthält Strafen (Madring 2026: SAI Quali 17., Start 20.)
+    grid_session = {"R": "Q", "S": "SQ"}.get(session_type)
+    if grid_session:
+        grid_key = openf1.find_session_key(meeting_key, grid_session)
+        data["grid"] = build_grid(openf1.cached_fetch("starting_grid", grid_key, refresh), data["numbers"])
     return data
+
+
+def build_grid(starting_grid: list[dict], numbers: dict[str, str]) -> dict[str, int]:
+    """{Kürzel: Startplatz}. numbers ist {Kürzel: Startnummer ALS TEXT} –
+    OpenF1 liefert die Startnummer im Grid aber als ZAHL, daher str()."""
+    num_to_abbr = {str(n): a for a, n in numbers.items()}
+    return {num_to_abbr.get(str(g["driver_number"]), str(g["driver_number"])): g["position"]
+            for g in starting_grid if g.get("position") is not None}
 
 
 def sign_mismatches(data: dict, driver_a: str, driver_b: str) -> list[tuple[int, bool]]:

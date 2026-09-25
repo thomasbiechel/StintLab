@@ -84,3 +84,55 @@ def test_drivers_without_time_are_named_not_hidden():
     data = {"teams": {"NOR": "McLaren", "BEA": "Haas F1 Team", "STR": "Aston Martin"},
             "results": [{"driver": "NOR", "position": 1, "duration": [93.469, 92.873, 91.824]}]}
     assert unclassified(data) == ["BEA", "STR"]
+
+
+# ── Rennen, echte Werte Madring 2026 ────────────────────────────────────────
+def _race_data():
+    res = [
+        {"driver": "ANT", "position": 1, "gap": 0, "duration": 5663.754, "laps": 57, "points": 25.0},
+        {"driver": "VER", "position": 2, "gap": 4.351, "duration": 5668.105, "laps": 57, "points": 18.0},
+        {"driver": "LIN", "position": 9, "gap": "+1 LAP", "duration": None, "laps": 56, "points": 2.0},
+        {"driver": "BEA", "position": 16, "gap": "+1 LAP", "duration": None, "laps": 56, "points": 0.0},
+        {"driver": "PER", "position": None, "gap": None, "duration": None, "laps": 31, "points": 0.0, "dnf": True},
+        {"driver": "SAI", "position": None, "gap": None, "duration": None, "laps": 43, "points": 0.0, "dnf": True},
+    ]
+    for r in res:
+        r.setdefault("dnf", False); r.setdefault("dns", False); r.setdefault("dsq", False)
+    return {"session_type": "R", "results": res,
+            "grid": {"NOR": 1, "ANT": 2, "VER": 3, "LIN": 10, "BEA": 22, "PER": 18, "SAI": 20},
+            "pit_stops": [{"driver": "ANT", "lap": 14}, {"driver": "SAI", "lap": 23}, {"driver": "SAI", "lap": 31}],
+            "laps": [{"Driver": "ANT", "LapNumber": 57}, {"Driver": "SAI", "LapNumber": 43}]}
+
+
+def test_race_rows_order_and_places_gained():
+    from stintlab.analyses.results import race_rows
+    rows = race_rows(_race_data())
+    # Klassierte nach Position, dann Ausfälle nach Runden (SAI 43 vor PER 31)
+    assert [r["driver"] for r in rows] == ["ANT", "VER", "LIN", "BEA", "SAI", "PER"]
+    by = {r["driver"]: r for r in rows}
+    assert by["ANT"]["change"] == 1        # Start 2 → Ziel 1
+    assert by["VER"]["change"] == 1
+    assert by["BEA"]["change"] == 6        # Start 22 → Ziel 16
+    assert by["SAI"]["change"] is None     # Ausfall: kein ▲▼
+    assert by["SAI"]["pits"] == 2 and by["ANT"]["pits"] == 1
+
+
+def test_race_plausibility_is_quiet_on_matching_data():
+    from stintlab.analyses.results import race_mismatches
+    assert race_mismatches(_race_data()) == []
+
+
+def test_race_plausibility_reports_lap_mismatch():
+    from stintlab.analyses.results import race_mismatches
+    data = _race_data()
+    data["laps"] = [{"Driver": "ANT", "LapNumber": 52}]
+    assert any("ANT" in p for p in race_mismatches(data))
+
+
+def test_grid_maps_numeric_driver_numbers_to_abbreviations():
+    # Echter Fehler: numbers speichert "12" (Text), starting_grid liefert 12 (Zahl)
+    from stintlab.session import build_grid
+    numbers = {"ANT": "12", "NOR": "1", "SAI": "55"}
+    raw = [{"position": 1, "driver_number": 1}, {"position": 2, "driver_number": 12},
+           {"position": 20, "driver_number": 55}]
+    assert build_grid(raw, numbers) == {"NOR": 1, "ANT": 2, "SAI": 20}

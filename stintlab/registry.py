@@ -84,8 +84,7 @@ ANALYSES = {
     "lap_times": {"render": _lap_times, "sessions": {"R", "S", "FP1", "FP2", "FP3"}},
     "long_runs": {"render": _long_runs, "sessions": {"FP1", "FP2", "FP3"}},
     "ideal_lap": {"render": _ideal_lap, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
-    # Rennen folgt – dann hier ergänzen
-    "results": {"render": _results, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
+    "results": {"render": _results, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "sectors": {"render": _sectors, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
     "telemetry": {"render": _telemetry, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
 }
