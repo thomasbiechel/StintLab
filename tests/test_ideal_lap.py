@@ -101,3 +101,32 @@ def test_reinstated_by_lap_number():
     msgs = [{"message": "CAR 43 (COL) LAP DELETED - TRACK LIMITS AT TURN 2 LAP 2 16:00:36"},
             {"message": "CAR 43 (COL) LAP 2 REINSTATED"}]
     assert deleted_laps(msgs) == set()
+
+
+def test_deleted_time_is_matched_by_lap_time_not_by_message_lap_number():
+    # Echter Fall Baku FP2: Meldung sagt LAP 14, gemeint ist Runde 13 (2:13.440).
+    # Runde 14 (1:43.347) ist RUS' schnellste und darf NICHT gestrichen werden.
+    laps = [{"Driver": "RUS", "LapNumber": 13, "LapTime": 133.44},
+            {"Driver": "RUS", "LapNumber": 14, "LapTime": 103.347}]
+    msgs = [{"message": "CAR 63 (RUS) TIME 2:13.440 DELETED - TRACK LIMITS AT TURN 1 LAP 14 16:38:55"}]
+    assert deleted_laps(msgs, laps) == {("RUS", 13)}
+
+
+def test_deletion_without_time_hits_the_lap_in_progress():
+    # Nachgebildet nach COL, Baku FP2: Runde 1 beendet, in Runde 2 Track Limits,
+    # Meldung kommt, bevor Runde 2 fertig ist → Runde 2 ist gestrichen.
+    from datetime import datetime, timezone
+    at = lambda h, m, sec: datetime(2026, 9, 24, h, m, sec, tzinfo=timezone.utc)
+    ends = {"COL": {1: at(16, 59, 50), 2: at(17, 1, 39), 3: at(17, 3, 55)}}
+    msgs = [{"message": "CAR 43 (COL) LAP DELETED - TRACK LIMITS AT TURN 2 LAP 2 17:00:36",
+             "date": at(17, 0, 36)}]
+    assert deleted_laps(msgs, [], ends) == {("COL", 2)}
+
+
+def test_deletion_before_any_lap_finished_hits_first_lap():
+    from datetime import datetime, timezone
+    at = lambda m: datetime(2026, 9, 24, 17, m, 0, tzinfo=timezone.utc)
+    ends = {"COL": {1: at(5), 2: at(7)}}
+    msgs = [{"message": "CAR 43 (COL) LAP DELETED - TRACK LIMITS AT TURN 2 LAP 1 17:03:00",
+             "date": at(3)}]
+    assert deleted_laps(msgs, [], ends) == {("COL", 1)}

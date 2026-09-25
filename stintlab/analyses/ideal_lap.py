@@ -28,7 +28,7 @@ SECTORS = ("Sector1", "Sector2", "Sector3")
 
 def _valid_laps(data: dict, compound: str | None) -> dict[str, list[dict]]:
     """{Fahrer: [gültige Runden]} nach den Regeln im Modul-Docstring."""
-    deleted = deleted_laps(data.get("race_control", []))
+    deleted = deleted_laps(data.get("race_control", []), data.get("laps", []), data.get("lap_ends", {}))
     stints = data.get("stints", [])
     result: dict[str, list[dict]] = {}
     for lap in data.get("laps", []):

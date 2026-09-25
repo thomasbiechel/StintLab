@@ -72,21 +72,65 @@ _REINSTATED = re.compile(r"\((?P<drv>[A-Z]{3})\)\s+(?:LAP\s+(?P<lap>\d+)\s+)?(?:
                          r"(?:TIME\s+(?P<time>[\d:.]+)\s+)?REINSTATED")
 
 
-def deleted_laps(race_control: list[dict]) -> set[tuple[str, int]]:
-    """{(Fahrerkürzel, Runde)} aller gestrichenen Runden (z. B. Track Limits).
+def _seconds(time_text: str) -> float | None:
+    """"2:13.440" → 133.44"""
+    try:
+        minutes, rest = time_text.split(":") if ":" in time_text else ("0", time_text)
+        return int(minutes) * 60 + float(rest)
+    except ValueError:
+        return None
 
-    Im Training haben Race-Control-Meldungen oft keine Rundennummer im Feld
-    "lap" – sie steht aber im Text, deshalb wird der Text ausgewertet.
-    Eine spätere "REINSTATED"-Meldung (gleiche Zeit oder gleiche Runde) hebt
-    die Streichung auf.
+
+def _resolve(drv: str, lap_text: int, time_text: str | None, date,
+             laps_by_driver: dict[str, list[dict]], lap_ends: dict) -> int:
+    """Welche OpenF1-Runde meint eine Streichung?
+
+    Die Rundennummer im Meldungstext ist NICHT zuverlässig: In Baku FP2 meldete
+    die Rennleitung "RUS TIME 2:13.440 DELETED … LAP 14", bei OpenF1 war das
+    Runde 13 – Runde 14 war seine schnellste. Deshalb, in dieser Reihenfolge:
+      1. Meldung mit Zeit → die Runde des Fahrers mit genau dieser Zeit
+      2. Meldung ohne Zeit → die Runde, die zum Zeitpunkt der Meldung LÄUFT
+         (letzte beendete + 1). Sie hat noch keine Zeit, deshalb steht keine
+         in der Meldung. Geprüft an Baku FP2: SAI, HAD und ALB (In-Laps vor
+         "(PIT)") und COL (schnelle Runde, noch vor dem Ziel gestrichen).
+      3. Notlösung: Rundennummer aus dem Text
     """
-    deleted: list[tuple[str, int, str | None]] = []   # (Fahrer, Runde, Zeit)
+    seconds = _seconds(time_text) if time_text else None
+    if seconds is not None:
+        same = [l for l in laps_by_driver.get(drv, [])
+                if l.get("LapTime") and abs(float(l["LapTime"]) - seconds) <= 0.0015]
+        if same:
+            return min(same, key=lambda l: abs(l["LapNumber"] - lap_text))["LapNumber"]
+    ends = lap_ends.get(drv, {})
+    if date is not None and ends:
+        finished = [n for n, end in ends.items() if end <= date]
+        return max(finished) + 1 if finished else min(ends)
+    return lap_text
+
+
+def deleted_laps(race_control: list[dict], laps: list[dict] | None = None,
+                 lap_ends: dict | None = None) -> set[tuple[str, int]]:
+    """{(Fahrerkürzel, OpenF1-Runde)} aller gestrichenen Runden.
+
+    Mit laps (und lap_ends) wird jede Streichung über Zeit bzw. Zeitstempel der
+    richtigen Runde zugeordnet, siehe _resolve(). Ohne diese Daten bleibt nur
+    die unzuverlässige Rundennummer aus dem Text – das ist nur für Tests gedacht.
+    Eine spätere "REINSTATED"-Meldung (gleiche Zeit oder gleiche Runde im Text)
+    hebt die Streichung auf.
+    """
+    laps_by_driver: dict[str, list[dict]] = {}
+    for lap in laps or []:
+        if lap.get("LapNumber") is not None:
+            laps_by_driver.setdefault(lap["Driver"], []).append(lap)
+
+    # (Fahrer, Runde laut Text, Zeit laut Text, Zeitstempel)
+    deleted: list[tuple[str, int, str | None, object]] = []
     for msg in race_control:
         text = (msg.get("message") or "").upper()
         if m := _DELETED.search(text):
-            deleted.append((m["drv"], int(m["lap"]), m["time"]))
+            deleted.append((m["drv"], int(m["lap"]), m["time"], msg.get("date")))
         elif m := _REINSTATED.search(text):
-            deleted = [(d, lap, t) for d, lap, t in deleted
+            deleted = [(d, lap, t, dt) for d, lap, t, dt in deleted
                        if not (d == m["drv"] and ((m["time"] and t == m["time"])
                                                    or (m["lap"] and lap == int(m["lap"]))))]
-    return {(d, lap) for d, lap, _ in deleted}
+    return {(d, _resolve(d, lap, t, dt, laps_by_driver, lap_ends or {})) for d, lap, t, dt in deleted}

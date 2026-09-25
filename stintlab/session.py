@@ -23,7 +23,7 @@ from stintlab import openf1
 # ausgeschieden oder überrundet und liefert keine Abstände mehr.
 STALE_AFTER_S = 150.0
 
-ENDPOINTS = ["drivers", "laps", "race_control", "pit", "position", "intervals", "stints"]
+ENDPOINTS = ["drivers", "laps", "race_control", "pit", "position", "intervals", "stints", "session_result"]
 
 
 def _parse(ts: str | None) -> datetime | None:
@@ -146,7 +146,8 @@ def build_session_data(raw: dict[str, list[dict]]) -> dict:
         ],
         "race_control": [
             {"lap": m.get("lap_number"), "category": m.get("category") or "",
-             "flag": m.get("flag"), "message": m.get("message") or ""}
+             "flag": m.get("flag"), "message": m.get("message") or "",
+             "date": _parse(m.get("date"))}
             for m in raw["race_control"]
         ],
         # Reifen pro Stint: Mischung, Runden und Alter der Reifen beim Aufziehen
@@ -157,6 +158,15 @@ def build_session_data(raw: dict[str, list[dict]]) -> dict:
              "tyre_age_at_start": st.get("tyre_age_at_start")}
             for st in sorted(raw.get("stints", []),
                              key=lambda x: (str(x.get("driver_number")), x.get("stint_number") or 0))
+        ],
+        # Offizielles Ergebnis (OpenF1 /session_result, Beta). duration und
+        # gap_to_leader sind im Qualifying Listen [Q1, Q2, Q3], sonst Zahlen.
+        "results": [
+            {"driver": abbr(r.get("driver_number")), "position": r.get("position"),
+             "duration": r.get("duration"), "gap": r.get("gap_to_leader"),
+             "laps": r.get("number_of_laps"), "points": r.get("points"),
+             "dnf": bool(r.get("dnf")), "dns": bool(r.get("dns")), "dsq": bool(r.get("dsq"))}
+            for r in raw.get("session_result", [])
         ],
         "pit_stops": [
             {"driver": abbr(p.get("driver_number")), "lap": p.get("lap_number"),
@@ -170,7 +180,9 @@ def load_session(meeting_key: int, session_type: str, refresh: bool = False) -> 
     """Lädt eine Session (beim ersten Mal von OpenF1, danach aus dem Cache)."""
     session_key = openf1.find_session_key(meeting_key, session_type)
     raw = {ep: openf1.cached_fetch(ep, session_key, refresh) for ep in ENDPOINTS}
-    return build_session_data(raw)
+    data = build_session_data(raw)
+    data["session_type"] = session_type
+    return data
 
 
 def sign_mismatches(data: dict, driver_a: str, driver_b: str) -> list[tuple[int, bool]]:

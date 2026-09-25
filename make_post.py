@@ -14,6 +14,7 @@ import sys
 import tomllib
 from pathlib import Path
 
+from stintlab.analyses.results import result_mismatches
 from stintlab.registry import ANALYSES
 from stintlab.session import load_session, sign_mismatches
 from stintlab.style import new_slide, save_slide
@@ -58,6 +59,12 @@ def main() -> None:
             print(f"ℹ {drivers[0]}/{drivers[1]}: Abweichung nur in Boxenstopp-Runde(n) {pit} – meist erklärbar")
         if other:
             print(f"⚠ {drivers[0]}/{drivers[1]}: Abstand widerspricht Position in Runde(n) {other} – vor dem Posten prüfen!")
+
+    # Plausibilitätstest: Offizielles Ergebnis (OpenF1-Beta) vs. Rundendaten
+    for stype in {slide.get("session", session["type"]) for slide in config["slides"]
+                  if slide["analysis"] == "results"}:
+        for problem in result_mismatches(sessions[stype]):
+            print(f"⚠ Ergebnis {stype}: {problem} – vor dem Posten prüfen!")
 
     out_dir = config_file.parent / "slides"
     for i, slide in enumerate(config["slides"], start=1):

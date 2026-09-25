@@ -3,6 +3,11 @@
    type = "FP2"
 
    [[slides]]
+   analysis = "results"
+   title    = "FP3 RESULTS"
+   subtitle = "Official classification · tyre = compound of each driver's fastest lap"
+
+   [[slides]]
    analysis = "long_runs"
    compound = "SOFT"
    title    = "TITEL FOLGT"
