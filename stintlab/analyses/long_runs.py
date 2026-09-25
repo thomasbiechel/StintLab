@@ -26,6 +26,8 @@ zeigt eine Tendenz, keine Vorhersage fürs Rennen.
 
 from __future__ import annotations
 
+import textwrap
+
 import numpy as np
 
 from stintlab.race_control import restricted_laps
@@ -166,7 +168,11 @@ def _fmt(seconds: float) -> str:
 
 
 def render_long_runs(ax, data: dict, drivers: list[str] | None = None,
-                     compound: str | None = None, min_laps: int = 5) -> list[dict]:
+                     compound: str | None = None, min_laps: int = 5,
+                     show_deg: bool = False) -> list[dict]:
+    """show_deg: Trend pro Runde anzeigen. Standardmäßig aus, weil er bei
+    kurzen Runs im Training vor allem Sprit, Streckenentwicklung und
+    Aufwärmen zeigt – nicht den Reifenabbau."""
     runs = best_run_per_driver(find_long_runs(data, min_laps), compound)
     if drivers:
         runs = [r for r in runs if r["driver"] in drivers]
@@ -193,11 +199,28 @@ def render_long_runs(ax, data: dict, drivers: list[str] | None = None,
         ax.scatter([-right * 0.06], [i], s=55, color=COMPOUND_COLORS.get(r["compound"], COLORS["muted"]),
                    edgecolor=COLORS["bg"], linewidth=1, zorder=5, clip_on=False)
         label = f"{_fmt(r['median'])}" if d == 0 else f"+{d:.2f} s"
-        ax.text(d + right * 0.02, i, f"{label}  ·  {len(r['laps'])} laps  ·  {r['deg_per_lap']:+.2f} s/lap",
-                va="center", fontsize=8, color=COLORS["text"])
+        label += f"  ·  {len(r['laps'])} laps"
+        if show_deg:
+            label += f"  ·  {r['deg_per_lap']:+.2f} s/lap"
+        ax.text(d + right * 0.02, i, label, va="center", fontsize=8, color=COLORS["text"])
 
     ax.set_xlim(-right * 0.1, right * 1.75)
     ax.set_xlabel(f"Median long-run lap time, gap to fastest (s)")
-    ax.text(0.99, 0.02, "● tyre compound · s/lap = trend, not fuel-corrected",
-            transform=ax.transAxes, ha="right", va="bottom", fontsize=7.5, color=COLORS["muted"])
+    # Hinweise unter den Balken: Mischung und fehlende Fahrer.
+    # Dafür unten Platz reservieren, damit nichts einen Balken überdeckt.
+    notes = ["● tyre compound" + (" · s/lap = trend, not fuel-corrected" if show_deg else "")]
+    missing = missing_drivers(data, runs, drivers)
+    if missing:
+        head = f"No usable long run{' on ' + compound.capitalize() + 's' if compound else ''}: "
+        notes = textwrap.wrap(head + ", ".join(missing), width=70) + notes
+    ax.set_ylim(len(runs) - 0.5 + 0.55 * len(notes) + 0.3, -0.6)
+    ax.text(0.99, 0.02, "\n".join(notes), transform=ax.transAxes, ha="right", va="bottom",
+            fontsize=7.5, color=COLORS["muted"], linespacing=1.5)
     return runs
+
+
+def missing_drivers(data: dict, shown: list[dict], drivers: list[str] | None = None) -> list[str]:
+    """Fahrer der Session (oder der gewünschten Auswahl) ohne gezeigten Long Run."""
+    everyone = drivers or sorted({lap["Driver"] for lap in data.get("laps", [])})
+    have = {r["driver"] for r in shown}
+    return [d for d in everyone if d not in have]

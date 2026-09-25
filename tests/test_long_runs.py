@@ -68,3 +68,10 @@ def test_run_with_some_traffic_in_the_middle_is_kept():
     runs = find_long_runs({"laps": laps_for("VER", 14, times)}, min_laps=4)
     assert len(runs) == 1
     assert runs[0]["median"] < 109
+
+
+def test_missing_drivers_are_listed():
+    from stintlab.analyses.long_runs import missing_drivers
+    data = {"laps": laps_for("LEC", 10, [105.0] * 6) + laps_for("ANT", 10, [105.0] * 3)}
+    shown = best_run_per_driver(find_long_runs(data))
+    assert missing_drivers(data, shown) == ["ANT"]

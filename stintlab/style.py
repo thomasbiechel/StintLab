@@ -9,6 +9,8 @@ Trennung der Aufgaben:
 from pathlib import Path
 import textwrap
 
+import matplotlib
+matplotlib.use("Agg")  # nur Dateien rendern, kein Fenster – braucht kein Tk
 import matplotlib.pyplot as plt
 
 # ── Format ─────────────────────────────────────────────────────────────

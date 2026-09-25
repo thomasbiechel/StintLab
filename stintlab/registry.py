@@ -48,7 +48,10 @@ def _long_runs(ax, data, slide):
     min_laps = slide.get("min_laps", 5)
     if not isinstance(min_laps, int) or min_laps < 3:
         raise ValueError("min_laps muss eine ganze Zahl ab 3 sein, z. B. min_laps = 5")
-    render_long_runs(ax, data, slide.get("drivers") or None, slide.get("compound"), min_laps)
+    show_deg = slide.get("show_deg", False)
+    if not isinstance(show_deg, bool):
+        raise ValueError("show_deg muss true oder false sein (klein geschrieben, ohne Anführungszeichen)")
+    render_long_runs(ax, data, slide.get("drivers") or None, slide.get("compound"), min_laps, show_deg)
 
 
 ANALYSES = {
