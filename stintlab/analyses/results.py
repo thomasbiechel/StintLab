@@ -188,6 +188,23 @@ def qualifying_rows(data: dict) -> list[dict]:
     return sorted(rows, key=lambda x: (x["position"] or 99, x["driver"]))
 
 
+def part_sizes(data: dict, rows: list[dict]) -> tuple[int, int]:
+    """(Teilnehmer Q2, Teilnehmer Q3).
+
+    NICHT aus den Zeiten ableiten: Wer in Q2 ohne Zeit bleibt, sähe sonst wie
+    in Q1 ausgeschieden aus (Baku 2026: ANT, P16). Stattdessen aus dem Format:
+    Q3 = 10, in Q1 und Q2 scheidet jeweils die Hälfte der übrigen aus
+    (22 Gemeldete → 16 in Q2, 20 → 15). Gezählt werden alle Gemeldeten, auch
+    ohne Zeit. Zeigen die Daten mehr Teilnehmer, gewinnen die Daten.
+    """
+    entries = max(len(data.get("teams", {})), len(rows))
+    q3 = 10
+    q2 = q3 + (entries - q3) // 2
+    by_time_q3 = sum(r["times"][2] is not None for r in rows)
+    by_time_q2 = sum(r["times"][1] is not None for r in rows)
+    return max(q2, by_time_q2), max(q3, by_time_q3)
+
+
 def render_qualifying(ax, data: dict) -> list[dict]:
     rows = qualifying_rows(data)
     if not rows:
@@ -217,9 +234,13 @@ def render_qualifying(ax, data: dict) -> list[dict]:
                       (str(r["position"]) if r["position"] else "–", COLORS["muted"], False),
                       (r["driver"], tc, True), *cells, (gap, COLORS["text"], False)])
 
-    # Trennlinien: wer ist in Q1 bzw. Q2 ausgeschieden
-    in_q3 = sum(r["times"][2] is not None for r in rows)
-    in_q2 = sum(r["times"][1] is not None for r in rows)
+    in_q2, in_q3 = part_sizes(data, rows)
+    # Wer in einem Abschnitt war, aber keine Zeit hat (Baku 2026: ANT nach Crash
+    # in Q1 auf P16, in Q2 nicht gefahren) → "no time" statt leerer Zelle
+    for i, row in enumerate(table):
+        for k, size in ((1, in_q2), (2, in_q3)):
+            if i < size and rows[i]["times"][k] is None:
+                row[3 + k] = ("no time", COLORS["muted"], False)
     separators = {}
     if 0 < in_q3 < len(rows):
         separators[in_q3 - 1] = "out in Q2"

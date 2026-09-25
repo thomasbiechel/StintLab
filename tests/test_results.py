@@ -136,3 +136,23 @@ def test_grid_maps_numeric_driver_numbers_to_abbreviations():
     raw = [{"position": 1, "driver_number": 1}, {"position": 2, "driver_number": 12},
            {"position": 20, "driver_number": 55}]
     assert build_grid(raw, numbers) == {"NOR": 1, "ANT": 2, "SAI": 20}
+
+
+def test_driver_in_q2_without_time_is_not_shown_as_out_in_q1():
+    # Echter Fall Baku 2026: ANT crasht in Q1, ist P16 (in Q2), fährt dort nicht
+    from stintlab.analyses.results import part_sizes, qualifying_rows
+    drivers = [f"D{i:02d}" for i in range(1, 23)]
+    res = []
+    for i, d in enumerate(drivers, start=1):
+        q2 = 104.0 + i * 0.01 if i <= 15 else None      # P16 ohne Q2-Zeit
+        q3 = 103.0 + i * 0.01 if i <= 10 else None
+        res.append({"driver": d, "position": i, "duration": [105.0 + i * 0.01, q2, q3],
+                    "dnf": False, "dns": False, "dsq": False})
+    data = {"session_type": "Q", "results": res, "teams": {d: "X" for d in drivers}}
+    assert part_sizes(data, qualifying_rows(data)) == (16, 10)
+
+
+def test_part_sizes_for_twenty_entries():
+    from stintlab.analyses.results import part_sizes
+    rows = [{"times": [100.0, None, None]}] * 20
+    assert part_sizes({"teams": {f"D{i}": "X" for i in range(20)}}, rows) == (15, 10)
