@@ -96,3 +96,17 @@ def find_session_key(meeting_key: int, session_type: str) -> int:
         available = [s.get("session_name") for s in sessions]
         raise ValueError(f"'{name}' gibt es bei Meeting {meeting_key} nicht. Verfügbar: {available}")
     return match["session_key"]
+
+def cached_fetch_driver(endpoint: str, session_key: int, driver_number: int,
+                        refresh: bool = False) -> list[dict]:
+    """Wie cached_fetch(), aber nur für einen Fahrer – für große Endpunkte wie
+    car_data (Telemetrie), die für alle Fahrer zusammen zu groß wären.
+    Cache: data/cache/<session_key>/<endpoint>_<Startnummer>.json
+    """
+    path = CACHE_DIR / str(session_key) / f"{endpoint}_{driver_number}.json"
+    if path.exists() and not refresh:
+        return json.loads(path.read_text(encoding="utf-8"))
+    data = fetch(endpoint, {"session_key": session_key, "driver_number": driver_number})
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return data

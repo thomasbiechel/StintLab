@@ -62,3 +62,25 @@ def test_session_result_is_loaded_from_openf1():
                                "dnf": False, "dns": False, "dsq": False}]}
     [r] = build_session_data(raw)["results"]
     assert (r["driver"], r["position"], r["duration"], r["laps"]) == ("RUS", 1, 103.759, 24)
+
+
+def test_qualifying_rows_and_eliminations():
+    from stintlab.analyses.results import qualifying_rows
+    data = {"session_type": "Q", "results": [
+        {"driver": "NOR", "position": 1, "duration": [93.469, 92.873, 91.824], "dnf": False, "dns": False, "dsq": False},
+        {"driver": "RUS", "position": 6, "duration": [93.211, 92.85, 92.149], "dnf": False, "dns": False, "dsq": False},
+        {"driver": "ALB", "position": 14, "duration": [93.9, 93.4, None], "dnf": False, "dns": False, "dsq": False},
+        {"driver": "STR", "position": 20, "duration": [94.8, None, None], "dnf": False, "dns": False, "dsq": False},
+    ]}
+    rows = qualifying_rows(data)
+    assert [r["driver"] for r in rows] == ["NOR", "RUS", "ALB", "STR"]
+    assert rows[2]["times"] == [93.9, 93.4, None]
+    assert rows[3]["times"] == [94.8, None, None]
+
+
+def test_drivers_without_time_are_named_not_hidden():
+    # Echter Fall Madring Q 2026: BEA und STR gemeldet, aber ohne Zeit
+    from stintlab.analyses.results import unclassified
+    data = {"teams": {"NOR": "McLaren", "BEA": "Haas F1 Team", "STR": "Aston Martin"},
+            "results": [{"driver": "NOR", "position": 1, "duration": [93.469, 92.873, 91.824]}]}
+    assert unclassified(data) == ["BEA", "STR"]

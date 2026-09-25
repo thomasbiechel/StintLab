@@ -5,7 +5,8 @@ result_mismatches() eine Plausibilitätsprüfung gegen die Rundendaten.
 
 JE SESSION andere Spalten – aktuell umgesetzt:
 - Training: Pos, Fahrer, Reifen der schnellsten Runde, Bestzeit, Abstand, Runden
-Qualifying und Rennen folgen.
+- Qualifying: Pos, Fahrer, Q1, Q2, Q3, Abstand zur Pole, Trennlinien
+Das Rennen folgt.
 
 FARBEN: Fahrer in Teamfarbe. Lila (StintLab-Akzent) nur für die schnellste
 Runde der Session – in der Zeitnahme bedeutet Lila genau das.
@@ -76,7 +77,25 @@ def result_mismatches(data: dict) -> list[str]:
     return problems
 
 
-def _table(ax, header: list[tuple[str, float, str]], rows: list[list[tuple]]) -> None:
+def unclassified(data: dict) -> list[str]:
+    """Fahrer, die für die Session gemeldet sind, aber im Ergebnis fehlen.
+
+    OpenF1 lässt Fahrer ohne Zeit aus session_result weg (Madring Q 2026:
+    BEA und STR konnten nicht fahren und fehlen dort ganz). Die offizielle
+    Wertung führt sie unten ohne Zeit – die Slide soll sie nicht verschweigen.
+    """
+    classified = {r["driver"] for r in data.get("results", [])}
+    return sorted(d for d in data.get("teams", {}) if d not in classified)
+
+
+def _note(ax, drivers: list[str]) -> None:
+    if drivers:
+        ax.text(0.99, -0.02, "No time set: " + ", ".join(drivers), transform=ax.transAxes,
+                ha="right", va="top", fontsize=7.5, color=COLORS["muted"])
+
+
+def _table(ax, header: list[tuple[str, float, str]], rows: list[list[tuple]],
+           separators: dict[int, str] | None = None) -> None:
     """Zeichnet eine Tabelle in Achsen-Koordinaten (0–1).
 
     header: [(Text, x, Ausrichtung)]
@@ -95,6 +114,12 @@ def _table(ax, header: list[tuple[str, float, str]], rows: list[list[tuple]]) ->
                 color=COLORS["muted"], fontweight="bold")
     ax.plot([0, 1], [top - h, top - h], color=COLORS["grid"], linewidth=0.8)
 
+    for i, label in (separators or {}).items():
+        y = top - h * (i + 2)          # Linie unter Zeile i
+        ax.plot([0, 1], [y, y], color=COLORS["muted"], linewidth=0.9, linestyle="--", zorder=4)
+        # unter der Linie – dort sind die Spalten der Ausgeschiedenen leer
+        ax.text(0.99, y - h * 0.5, label, ha="right", va="center", fontsize=7, color=COLORS["muted"])
+
     for i, row in enumerate(rows):
         y = top - h * (i + 1.5)
         if i % 2 == 0:
@@ -112,8 +137,8 @@ def _table(ax, header: list[tuple[str, float, str]], rows: list[list[tuple]]) ->
 def render_practice(ax, data: dict) -> list[dict]:
     rows = practice_rows(data)
     if not rows:
-        raise ValueError("Kein Ergebnis von OpenF1 – Session läuft noch oder Cache ist alt "
-                         "(make_post.py mit --refresh aufrufen)")
+        raise ValueError("Kein Ergebnis von OpenF1 – die Session ist evtl. noch nicht klassifiziert. "
+                         "Ein paar Minuten warten und mit --refresh erneut versuchen")
     teams = data.get("teams", {})
     header = [("POS", 0.06, "right"), ("DRIVER", 0.125, "left"), ("TYRE", 0.36, "center"),
               ("BEST LAP", 0.60, "right"), ("GAP", 0.80, "right"), ("LAPS", 0.97, "right")]
@@ -137,6 +162,68 @@ def render_practice(ax, data: dict) -> list[dict]:
             (str(r["laps"] or 0), COLORS["muted"], False),
         ])
     _table(ax, header, table)
+    _note(ax, unclassified(data))
+    return rows
+
+
+QUALI = {"Q", "SQ"}
+
+
+def qualifying_rows(data: dict) -> list[dict]:
+    """Ergebniszeilen fürs Qualifying: Q1-, Q2-, Q3-Zeit je Fahrer, nach Position.
+
+    session_result liefert im Qualifying duration als Liste [Q1, Q2, Q3]
+    (geprüft am Madring 2026); ausgeschiedene Fahrer haben dort None.
+    """
+    rows = []
+    for r in data.get("results", []):
+        times = r["duration"] if isinstance(r["duration"], list) else [r["duration"]]
+        times = [_num(t) for t in (list(times) + [None, None, None])[:3]]
+        rows.append({"driver": r["driver"], "position": r["position"], "times": times,
+                     "status": "DSQ" if r.get("dsq") else "DNS" if r.get("dns") else
+                               "DNF" if r.get("dnf") else None})
+    return sorted(rows, key=lambda x: (x["position"] or 99, x["driver"]))
+
+
+def render_qualifying(ax, data: dict) -> list[dict]:
+    rows = qualifying_rows(data)
+    if not rows:
+        raise ValueError("Kein Ergebnis von OpenF1 – die Session ist evtl. noch nicht klassifiziert. "
+                         "Ein paar Minuten warten und mit --refresh erneut versuchen")
+    teams = data.get("teams", {})
+    header = [("POS", 0.06, "right"), ("DRIVER", 0.125, "left"), ("Q1", 0.45, "right"),
+              ("Q2", 0.64, "right"), ("Q3", 0.83, "right"), ("GAP", 0.97, "right")]
+    fastest = [min((r["times"][k] for r in rows if r["times"][k] is not None), default=None) for k in range(3)]
+    pole = fastest[2]
+
+    table = []
+    for r in rows:
+        tc = team_color(teams.get(r["driver"]))
+        cells = []
+        for k, t in enumerate(r["times"]):
+            if t is None:
+                cells.append(("", COLORS["muted"], False))
+            else:
+                best = t == fastest[k]
+                cells.append((_fmt(t), COLORS["accent"] if best else COLORS["text"], best))
+        q3 = r["times"][2]
+        gap = "—" if q3 is not None and q3 == pole else f"+{q3 - pole:.3f}" if q3 is not None and pole else ""
+        if r["status"] and all(t is None for t in r["times"]):
+            cells[0] = (r["status"], COLORS["muted"], False)
+        table.append([("__stripe__", tc),
+                      (str(r["position"]) if r["position"] else "–", COLORS["muted"], False),
+                      (r["driver"], tc, True), *cells, (gap, COLORS["text"], False)])
+
+    # Trennlinien: wer ist in Q1 bzw. Q2 ausgeschieden
+    in_q3 = sum(r["times"][2] is not None for r in rows)
+    in_q2 = sum(r["times"][1] is not None for r in rows)
+    separators = {}
+    if 0 < in_q3 < len(rows):
+        separators[in_q3 - 1] = "out in Q2"
+    if in_q3 < in_q2 < len(rows):
+        separators[in_q2 - 1] = "out in Q1"
+    _table(ax, header, table, separators)
+    _note(ax, unclassified(data))
     return rows
 
 
@@ -144,4 +231,6 @@ def render_results(ax, data: dict) -> list[dict]:
     stype = data.get("session_type")
     if stype in PRACTICE:
         return render_practice(ax, data)
-    raise ValueError(f"Ergebnis-Slide für '{stype}' gibt es noch nicht – bisher nur Training")
+    if stype in QUALI:
+        return render_qualifying(ax, data)
+    raise ValueError(f"Ergebnis-Slide für '{stype}' gibt es noch nicht – bisher Training und Qualifying")

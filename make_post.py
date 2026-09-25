@@ -69,7 +69,8 @@ def main() -> None:
 
     # Plausibilitätstest Qualifying: Runden richtig Q1/Q2/Q3 zugeordnet?
     for stype in {slide.get("session", session["type"]) for slide in config["slides"]
-                  if slide.get("part")}:
+                  if slide.get("part") or (slide["analysis"] == "results"
+                                           and slide.get("session", session["type"]) in ("Q", "SQ"))}:
         for problem in quali_mismatches(sessions[stype]):
             print(f"⚠ Qualifying {stype}: {problem} – vor dem Posten prüfen!")
 

@@ -1,0 +1,31 @@
+[session]
+meeting_key = 1295
+type = "Q"
+
+# Slide 1: offizielles Qualifying-Ergebnis
+[[slides]]
+analysis = "results"
+title    = "TITEL FOLGT"
+subtitle = "Official qualifying classification · fastest time in each part in purple"
+
+# Slide 2: Telemetrie der zwei Schnellsten
+[[slides]]
+analysis = "telemetry"
+part     = "Q3"
+title    = "WHERE POLE WAS WON"
+subtitle = "Fastest Q3 laps of the top two · speed and gap over the lap"
+
+# Slide 3: ideale Runde
+[[slides]]
+analysis = "ideal_lap"
+part     = "Q3"
+view     = "both"
+title    = "WHO COULD HAVE TAKEN POLE?"
+subtitle = "Each Q3 driver's best sectors added up vs. the pole lap"
+
+# Slide 4: beste Q3-Sektorzeiten
+[[slides]]
+analysis = "sectors"
+part     = "Q3"
+title    = "WHERE THE TIME IS"
+subtitle = "Each Q3 driver's best valid sector time · sector 3 is mostly the long straight – slipstream matters"

@@ -130,6 +130,7 @@ def build_session_data(raw: dict[str, list[dict]]) -> dict:
             for d in {dd for dd, _ in ends}
         },
         "teams": {abbr(n): t for n, t in num_to_team.items()},
+        "numbers": {abbr(n): n for n in num_to_abbr},
         "laps": [
             {"Driver": abbr(l.get("driver_number")), "LapNumber": l.get("lap_number"),
              "LapTime": l.get("lap_duration"), "IsPitOutLap": l.get("is_pit_out_lap"),
@@ -182,6 +183,7 @@ def load_session(meeting_key: int, session_type: str, refresh: bool = False) -> 
     raw = {ep: openf1.cached_fetch(ep, session_key, refresh) for ep in ENDPOINTS}
     data = build_session_data(raw)
     data["session_type"] = session_type
+    data["session_key"] = session_key
     return data
 
 

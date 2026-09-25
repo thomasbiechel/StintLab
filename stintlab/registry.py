@@ -15,6 +15,7 @@ from stintlab.analyses.long_runs import render_long_runs
 from stintlab.analyses.pit_cycle import render_pit_cycle
 from stintlab.analyses.results import render_results
 from stintlab.analyses.sectors import render_sectors
+from stintlab.analyses.telemetry import render_telemetry
 
 
 def _gap_between(ax, data, slide):
@@ -69,6 +70,10 @@ def _sectors(ax, data, slide):
     render_sectors(ax, data, slide.get("compound"), slide.get("part"))
 
 
+def _telemetry(ax, data, slide):
+    render_telemetry(ax, data, slide.get("drivers") or None, slide.get("compound"), slide.get("part"))
+
+
 def _results(ax, data, slide):
     render_results(ax, data)
 
@@ -79,7 +84,8 @@ ANALYSES = {
     "lap_times": {"render": _lap_times, "sessions": {"R", "S", "FP1", "FP2", "FP3"}},
     "long_runs": {"render": _long_runs, "sessions": {"FP1", "FP2", "FP3"}},
     "ideal_lap": {"render": _ideal_lap, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
-    # Qualifying und Rennen folgen – dann hier ergänzen
-    "results": {"render": _results, "sessions": {"FP1", "FP2", "FP3"}},
+    # Rennen folgt – dann hier ergänzen
+    "results": {"render": _results, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
     "sectors": {"render": _sectors, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
+    "telemetry": {"render": _telemetry, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
 }
