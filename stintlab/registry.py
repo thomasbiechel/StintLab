@@ -61,7 +61,7 @@ def _ideal_lap(ax, data, slide):
     if top is not None and (not isinstance(top, int) or top < 2):
         raise ValueError("top muss eine ganze Zahl ab 2 sein, z. B. top = 10")
     render_ideal_lap(ax, data, slide.get("drivers") or None, slide.get("compound"), top,
-                     slide.get("view", "both"))
+                     slide.get("view", "both"), slide.get("part"))
 
 
 def _results(ax, data, slide):

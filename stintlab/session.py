@@ -134,7 +134,7 @@ def build_session_data(raw: dict[str, list[dict]]) -> dict:
             {"Driver": abbr(l.get("driver_number")), "LapNumber": l.get("lap_number"),
              "LapTime": l.get("lap_duration"), "IsPitOutLap": l.get("is_pit_out_lap"),
              "Sector1": l.get("duration_sector_1"), "Sector2": l.get("duration_sector_2"),
-             "Sector3": l.get("duration_sector_3")}
+             "Sector3": l.get("duration_sector_3"), "LapStart": _parse(l.get("date_start"))}
             for l in raw["laps"]
         ],
         "gap_to_leader": [
