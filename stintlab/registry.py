@@ -16,6 +16,7 @@ from stintlab.analyses.pit_cycle import render_pit_cycle
 from stintlab.analyses.race_pace import render_driver_pace, render_team_pace
 from stintlab.analyses.results import render_results
 from stintlab.analyses.sectors import render_sectors
+from stintlab.analyses.speed import render_speed_vs_sector, render_top_speed
 from stintlab.analyses.telemetry import render_telemetry
 
 
@@ -90,6 +91,14 @@ def _team_pace(ax, data, slide):
     render_team_pace(ax, data, _min_laps(slide))
 
 
+def _top_speed(ax, data, slide):
+    render_top_speed(ax, data, slide.get("part"), slide.get("compound"))
+
+
+def _speed_vs_sector(ax, data, slide):
+    render_speed_vs_sector(ax, data, slide.get("sector", 2), slide.get("part"), slide.get("compound"))
+
+
 def _results(ax, data, slide):
     render_results(ax, data)
 
@@ -104,5 +113,7 @@ ANALYSES = {
     "sectors": {"render": _sectors, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
     "telemetry": {"render": _telemetry, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
     "driver_pace": {"render": _driver_pace, "sessions": {"R", "S"}},
+    "top_speed": {"render": _top_speed, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
+    "speed_vs_sector": {"render": _speed_vs_sector, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "team_pace": {"render": _team_pace, "sessions": {"R", "S"}},
 }

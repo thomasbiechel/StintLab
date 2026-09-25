@@ -1,0 +1,18 @@
+[session]
+meeting_key = 1295
+type = "Q"
+
+# Slide 1: Kompromiss Gerade vs. Kurven – die Geschichte zuerst
+[[slides]]
+analysis = "speed_vs_sector"
+part     = "Q3"
+sector   = 2
+title    = "NO COMPROMISE FOR RUSSELL"
+subtitle = "Speed trap vs. sector 2 (castle section) on each Q3 driver's fastest lap"
+
+# Slide 2: Topspeed im Detail
+[[slides]]
+analysis = "top_speed"
+part     = "Q3"
+title    = "FASTEST THROUGH THE SPEED TRAP"
+subtitle = "Speed trap on each Q3 driver's fastest lap · ○ = session max, may include slipstream"
