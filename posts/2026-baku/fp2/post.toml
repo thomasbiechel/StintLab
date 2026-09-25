@@ -7,8 +7,25 @@
    title    = "FP3 RESULTS"
    subtitle = "Official classification · tyre = compound of each driver's fastest lap"
 
+   # Slide 2: tatsächliche Bestzeiten in FP3
    [[slides]]
-   analysis = "long_runs"
+   analysis = "ideal_lap" 
+   view     = "best"
    compound = "SOFT"
    title    = "TITEL FOLGT"
-   subtitle = "Median lap time of each driver's longest run on Softs · red flag cut the runs short · fuel loads unknown"
+   subtitle = "Each driver's best valid FP3 lap on Softs · fuel loads and engine modes unknown"
+
+   # Slide 3: ideale Runde aus den besten FP3-Sektoren, ▲▼ = Plätze gegenüber Slide 1
+   [[slides]]
+   analysis = "ideal_lap"
+   view     = "ideal"
+   compound = "SOFT"
+   title    = "TITEL FOLGT"
+   subtitle = "Best FP3 sectors on Softs added up – the lap each driver had in him · ▲▼ = places vs. best lap"
+
+   # Slide 4: Long Runs aus FP2 – in FP3 fährt kaum jemand lange Runs
+   [[slides]]
+   analysis = "long_runs"
+   session  = "FP2"
+   title    = "TIGHT AT THE FRONT ON SOFTS"
+   subtitle = "Median lap time of each driver's longest FP2 run on Softs · red flag cut the runs short · fuel loads unknown"

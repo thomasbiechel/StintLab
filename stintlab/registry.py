@@ -14,6 +14,7 @@ from stintlab.analyses.lap_times import render_lap_times
 from stintlab.analyses.long_runs import render_long_runs
 from stintlab.analyses.pit_cycle import render_pit_cycle
 from stintlab.analyses.results import render_results
+from stintlab.analyses.sectors import render_sectors
 
 
 def _gap_between(ax, data, slide):
@@ -64,6 +65,10 @@ def _ideal_lap(ax, data, slide):
                      slide.get("view", "both"), slide.get("part"))
 
 
+def _sectors(ax, data, slide):
+    render_sectors(ax, data, slide.get("compound"), slide.get("part"))
+
+
 def _results(ax, data, slide):
     render_results(ax, data)
 
@@ -76,4 +81,5 @@ ANALYSES = {
     "ideal_lap": {"render": _ideal_lap, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
     # Qualifying und Rennen folgen – dann hier ergänzen
     "results": {"render": _results, "sessions": {"FP1", "FP2", "FP3"}},
+    "sectors": {"render": _sectors, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
 }

@@ -2,42 +2,23 @@
 meeting_key = 1295
 type = "FP3"
 
-# Slide 1 : Results
+# Slide 1: offizielles Ergebnis
 [[slides]]
 analysis = "results"
-session  = "FP2"
-title    = "FP3 RESULTS"
-subtitle = "Official classification · tyre = compound of each driver's fastest lap"
+title    = "FP3: VERSTAPPEN ON TOP"
+subtitle = "Official classification · top three within 0.111 s · tyre = compound of each driver's fastest lap"
 
-# Slide 2: tatsächliche Bestzeiten in FP3
-[[slides]]
-analysis = "ideal_lap" 
-session  = "FP2"
-view     = "best"
-compound = "SOFT"
-title    = "TITEL FOLGT"
-subtitle = "Each driver's best valid FP3 lap on Softs · fuel loads and engine modes unknown"
-
-# Slide 3: ideale Runde aus den besten FP3-Sektoren, ▲▼ = Plätze gegenüber Slide 1
+# Slide 2: ideale Runde aus den besten Soft-Sektoren
 [[slides]]
 analysis = "ideal_lap"
-session  = "FP2"
 view     = "ideal"
 compound = "SOFT"
-title    = "TITEL FOLGT"
-subtitle = "Best FP3 sectors on Softs added up – the lap each driver had in him · ▲▼ = places vs. best lap"
+title    = "VERSTAPPEN VS RUSSELL FOR POLE?"
+subtitle = "Best FP3 sectors on Softs added up · ▲▼ = places gained vs. best lap · fuel loads unknown"
 
-# Slide 4: Long Runs aus FP2 – in FP3 fährt kaum jemand lange Runs
+# Slide 3: beste Sektorzeiten auf Soft
 [[slides]]
-analysis = "long_runs"
-session  = "FP2"
+analysis = "sectors"
 compound = "SOFT"
-title    = "TIGHT AT THE FRONT ON SOFTS"
-subtitle = "Median lap time of each driver's longest FP2 run on Softs · red flag cut the runs short · fuel loads unknown"
-
-# Slide 5: Long Runs aus FP3 
-[[slides]]
-analysis = "long_runs"
-session  = "FP2"
-title    = "Kommt"
-subtitle = "Kommt"
+title    = "WHERE THE TIME IS"
+subtitle = "Each driver's best valid FP3 sector time on Softs · sector 3 is mostly the long straight – slipstream matters"
