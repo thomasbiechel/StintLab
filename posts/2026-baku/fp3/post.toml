@@ -1,0 +1,29 @@
+[session]
+meeting_key = 1295
+type = "FP3"
+
+# Slide 1: tatsächliche Bestzeiten in FP3
+[[slides]]
+analysis = "ideal_lap"
+session  = "FP2"        # ← nur für den Probelauf, nach FP3 löschen
+view     = "best"
+compound = "SOFT"
+title    = "TITEL FOLGT"
+subtitle = "Each driver's best valid FP3 lap on Softs · fuel loads and engine modes unknown"
+
+# Slide 2: ideale Runde aus den besten FP3-Sektoren, ▲▼ = Plätze gegenüber Slide 1
+[[slides]]
+analysis = "ideal_lap"
+session  = "FP2"        # ← nur für den Probelauf, nach FP3 löschen
+view     = "ideal"
+compound = "SOFT"
+title    = "TITEL FOLGT"
+subtitle = "Best FP3 sectors on Softs added up – the lap each driver had in him · ▲▼ = places vs. best lap"
+
+# Slide 3: Long Runs aus FP2 – in FP3 fährt kaum jemand lange Runs
+[[slides]]
+analysis = "long_runs"
+session  = "FP2"
+compound = "SOFT"
+title    = "TIGHT AT THE FRONT ON SOFTS"
+subtitle = "Median lap time of each driver's longest FP2 run on Softs · red flag cut the runs short · fuel loads unknown"

@@ -15,6 +15,8 @@ Erwartetes Format einer Meldung:
 
 from __future__ import annotations
 
+import re
+
 
 def restricted_laps(race_control: list[dict]) -> set[int]:
     """Rundennummern unter SC, VSC oder roter Flagge.
@@ -59,3 +61,32 @@ def restricted_laps(race_control: list[dict]) -> set[int]:
         restricted.update(range(start_lap, last_lap + 1))
 
     return restricted
+
+# Zwei Formate kommen vor (echte Meldungen aus Baku FP2):
+#   "CAR 44 (HAM) TIME 2:10.489 DELETED - TRACK LIMITS AT TURN 1 LAP 6 16:12:28"
+#   "CAR 43 (COL) LAP DELETED - TRACK LIMITS AT TURN 2 LAP 2 16:00:36"
+_DELETED = re.compile(r"\((?P<drv>[A-Z]{3})\)\s+(?:LAP\s+)?(?:TIME\s+(?P<time>[\d:.]+)\s+)?DELETED"
+                      r".*?\bLAP\s+(?P<lap>\d+)")
+# Aufhebung – mit Zeit oder mit Rundennummer, je nach Format
+_REINSTATED = re.compile(r"\((?P<drv>[A-Z]{3})\)\s+(?:LAP\s+(?P<lap>\d+)\s+)?(?:LAP\s+)?"
+                         r"(?:TIME\s+(?P<time>[\d:.]+)\s+)?REINSTATED")
+
+
+def deleted_laps(race_control: list[dict]) -> set[tuple[str, int]]:
+    """{(Fahrerkürzel, Runde)} aller gestrichenen Runden (z. B. Track Limits).
+
+    Im Training haben Race-Control-Meldungen oft keine Rundennummer im Feld
+    "lap" – sie steht aber im Text, deshalb wird der Text ausgewertet.
+    Eine spätere "REINSTATED"-Meldung (gleiche Zeit oder gleiche Runde) hebt
+    die Streichung auf.
+    """
+    deleted: list[tuple[str, int, str | None]] = []   # (Fahrer, Runde, Zeit)
+    for msg in race_control:
+        text = (msg.get("message") or "").upper()
+        if m := _DELETED.search(text):
+            deleted.append((m["drv"], int(m["lap"]), m["time"]))
+        elif m := _REINSTATED.search(text):
+            deleted = [(d, lap, t) for d, lap, t in deleted
+                       if not (d == m["drv"] and ((m["time"] and t == m["time"])
+                                                   or (m["lap"] and lap == int(m["lap"]))))]
+    return {(d, lap) for d, lap, _ in deleted}

@@ -9,6 +9,7 @@ Eine neue Analyse = neue Funktion in stintlab/analyses/ + ein Eintrag hier.
 """
 
 from stintlab.analyses.gap_between import render_gap_between
+from stintlab.analyses.ideal_lap import render_ideal_lap
 from stintlab.analyses.lap_times import render_lap_times
 from stintlab.analyses.long_runs import render_long_runs
 from stintlab.analyses.pit_cycle import render_pit_cycle
@@ -54,9 +55,18 @@ def _long_runs(ax, data, slide):
     render_long_runs(ax, data, slide.get("drivers") or None, slide.get("compound"), min_laps, show_deg)
 
 
+def _ideal_lap(ax, data, slide):
+    top = slide.get("top")
+    if top is not None and (not isinstance(top, int) or top < 2):
+        raise ValueError("top muss eine ganze Zahl ab 2 sein, z. B. top = 10")
+    render_ideal_lap(ax, data, slide.get("drivers") or None, slide.get("compound"), top,
+                     slide.get("view", "both"))
+
+
 ANALYSES = {
     "gap_between": {"render": _gap_between, "sessions": {"R", "S"}},
     "pit_cycle": {"render": _pit_cycle, "sessions": {"R", "S"}},
     "lap_times": {"render": _lap_times, "sessions": {"R", "S", "FP1", "FP2", "FP3"}},
     "long_runs": {"render": _long_runs, "sessions": {"FP1", "FP2", "FP3"}},
+    "ideal_lap": {"render": _ideal_lap, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
 }
