@@ -1,0 +1,18 @@
+[session]
+meeting_key = 1295
+type = "R"
+
+[[slides]]
+analysis = "results"
+title    = "RUSSELL HOLDS OFF VERSTAPPEN"
+subtitle = "Official race classification · +/– = places vs. starting grid"
+
+[[slides]]
+analysis = "driver_pace"
+title    = "RUSSELL HAD THE PACE"
+subtitle = "Clean race laps only · strategy and traffic affect the numbers"
+
+[[slides]]
+analysis = "team_pace"
+title    = "MERCEDES AHEAD, RED BULL CLOSE"
+subtitle = "Median of both drivers' clean race laps"

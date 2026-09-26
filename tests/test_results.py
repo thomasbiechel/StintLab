@@ -114,6 +114,7 @@ def test_race_rows_order_and_places_gained():
     assert by["VER"]["change"] == 1
     assert by["BEA"]["change"] == 6        # Start 22 → Ziel 16
     assert by["SAI"]["change"] is None     # Ausfall: kein ▲▼
+    # ohne Stint-Daten: Rückfall auf Boxengassen-Durchfahrten
     assert by["SAI"]["pits"] == 2 and by["ANT"]["pits"] == 1
 
 
@@ -156,3 +157,41 @@ def test_part_sizes_for_twenty_entries():
     from stintlab.analyses.results import part_sizes
     rows = [{"times": [100.0, None, None]}] * 20
     assert part_sizes({"teams": {f"D{i}": "X" for i in range(20)}}, rows) == (15, 10)
+
+
+def _baku_stints():
+    # Echte Werte Baku 2026 (Stints und Boxengassen-Zeiten), LAW konstruiert
+    st = lambda d, n, c, a, b, age: {"driver": d, "stint": n, "compound": c,
+                                     "lap_start": a, "lap_end": b, "tyre_age_at_start": age}
+    stints = [st("RUS", 1, "MEDIUM", 1, 31, 2), st("RUS", 2, "SOFT", 32, 36, 0), st("RUS", 3, "SOFT", 37, 51, 0),
+              st("VER", 1, "MEDIUM", 1, 31, 0), st("VER", 2, "SOFT", 32, 36, 0), st("VER", 3, "SOFT", 37, 51, 5),
+              st("ANT", 1, "MEDIUM", 1, 30, 2), st("ANT", 2, "SOFT", 31, 36, 0), st("ANT", 3, "SOFT", 37, 51, 6),
+              st("LAW", 1, "MEDIUM", 1, 30, 0), st("LAW", 2, "SOFT", 31, 36, 0), st("LAW", 3, "SOFT", 37, 51, 0)]
+    pit = lambda d, lap, t: {"driver": d, "lap": lap, "duration": t}
+    pits = [pit("RUS", 31, 21.0), pit("RUS", 36, 15.1), pit("VER", 31, 21.3), pit("VER", 36, 15.2),
+            pit("ANT", 30, 21.1), pit("ANT", 36, 16.3), pit("LAW", 30, 21.4), pit("LAW", 36, 23.6)]
+    return {"stints": stints, "pit_stops": pits}
+
+
+def test_drive_through_under_sc_is_not_a_stop():
+    from stintlab.analyses.results import tyre_stops
+    stops = tyre_stops(_baku_stints())
+    assert stops["VER"] == 1 and stops["ANT"] == 1     # Alter läuft weiter → Durchfahrt
+    assert stops["RUS"] == 1                           # Alter 0 (Datenfehler), aber 15,1 s → Durchfahrt
+    assert stops["LAW"] == 2                           # 23,6 s → echter Stopp unter SC
+
+
+def test_same_compound_stop_without_drive_through_reference_counts():
+    # Kein eindeutiger Fall als Maßstab → unklare Übergänge zählen als Stopp
+    from stintlab.analyses.results import tyre_stops
+    data = {"stints": [{"driver": "SAI", "stint": 1, "compound": "SOFT", "lap_start": 1, "lap_end": 20,
+                        "tyre_age_at_start": 0},
+                       {"driver": "SAI", "stint": 2, "compound": "SOFT", "lap_start": 21, "lap_end": 40,
+                        "tyre_age_at_start": 0}],
+            "pit_stops": [{"driver": "SAI", "lap": 20, "duration": 21.0}]}
+    assert tyre_stops(data) == {"SAI": 1}
+
+
+def test_pit_notes_name_drive_throughs():
+    from stintlab.analyses.results import pit_notes
+    assert pit_notes(_baku_stints()) == ["3 Fahrer mit Durchfahrt(en) ohne Reifenwechsel: ANT +1, RUS +1, VER +1"]

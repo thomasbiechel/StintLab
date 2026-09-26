@@ -14,7 +14,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from stintlab.analyses.results import result_mismatches
+from stintlab.analyses.results import pit_notes, result_mismatches
 from stintlab.quali import quali_mismatches
 from stintlab.registry import ANALYSES
 from stintlab.session import load_session, sign_mismatches
@@ -66,6 +66,9 @@ def main() -> None:
                   if slide["analysis"] == "results"}:
         for problem in result_mismatches(sessions[stype]):
             print(f"⚠ Ergebnis {stype}: {problem} – vor dem Posten prüfen!")
+        if stype in ("R", "S"):
+            for note in pit_notes(sessions[stype]):
+                print(f"ℹ Ergebnis {stype}: {note}")
 
     # Plausibilitätstest Qualifying: Runden richtig Q1/Q2/Q3 zugeordnet?
     for stype in {slide.get("session", session["type"]) for slide in config["slides"]

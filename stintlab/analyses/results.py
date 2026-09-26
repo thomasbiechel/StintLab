@@ -254,15 +254,79 @@ def render_qualifying(ax, data: dict) -> list[dict]:
 RACE = {"R", "S"}
 
 
+def lane_visits(data: dict) -> dict[str, int]:
+    """Durchfahrten durch die Boxengasse pro Fahrer (OpenF1 /pit)."""
+    out: dict[str, int] = {}
+    for p in data.get("pit_stops", []):
+        out[p["driver"]] = out.get(p["driver"], 0) + 1
+    return out
+
+
+DRIVE_THROUGH_MARGIN = 2.0   # s über der Durchfahrtszeit → Stopp
+
+
+def _visit_duration(data: dict, driver: str, lap: int) -> float | None:
+    for p in data.get("pit_stops", []):
+        if p["driver"] == driver and p.get("lap") in (lap, lap + 1) and p.get("duration"):
+            return float(p["duration"])
+    return None
+
+
+def tyre_stops(data: dict) -> dict[str, int]:
+    """Echte Stopps pro Fahrer – Durchfahrten ohne Anhalten zählen nicht.
+
+    Baku 2026: Das Feld fuhr in Runde 36 hinter dem Safety Car durch die
+    Boxengasse, ohne anzuhalten. OpenF1 meldet das wie einen Stopp und legt
+    sogar einen neuen Stint an. Jeder Stint-Übergang wird deshalb geprüft:
+      1. Mischung wechselt                         → Stopp
+      2. Reifenalter läuft weiter (VER: 0 + 5 Runden → Alter 5)  → Durchfahrt
+      3. unklar (gleiche Mischung, Alter springt auf 0 – bei RUS ein
+         Datenfehler): Zeit in der Boxengasse entscheidet. Bis
+         DRIVE_THROUGH_MARGIN über der Durchfahrtszeit der eindeutigen
+         Fälle (2.) → Durchfahrt, darüber → Stopp (LAW: 23,6 s statt ~15 s).
+         Gibt es keine eindeutige Durchfahrt als Maßstab → Stopp.
+    """
+    by_driver: dict[str, list[dict]] = {}
+    for st in data.get("stints", []):
+        by_driver.setdefault(st["driver"], []).append(st)
+
+    boundaries = []   # (Fahrer, Runde der Einfahrt, Art: "stop" | "through" | "unclear")
+    for drv, stints in by_driver.items():
+        stints = sorted(stints, key=lambda x: x.get("stint") or 0)
+        for prev, nxt in zip(stints, stints[1:]):
+            lap = (nxt.get("lap_start") or 1) - 1
+            if prev.get("compound") != nxt.get("compound"):
+                kind = "stop"
+            else:
+                prev_age, nxt_age = prev.get("tyre_age_at_start"), nxt.get("tyre_age_at_start")
+                laps = (prev.get("lap_end") or lap) - (prev.get("lap_start") or lap) + 1
+                continues = (prev_age is not None and nxt_age and abs(nxt_age - (prev_age + laps)) <= 1)
+                kind = "through" if continues else "unclear"
+            boundaries.append((drv, lap, kind))
+
+    through_times = [t for d, lap, k in boundaries if k == "through"
+                     if (t := _visit_duration(data, d, lap)) is not None]
+    reference = sorted(through_times)[len(through_times) // 2] if through_times else None
+
+    stops: dict[str, int] = {d: 0 for d in by_driver}
+    for drv, lap, kind in boundaries:
+        if kind == "unclear":
+            t = _visit_duration(data, drv, lap)
+            kind = "through" if (reference is not None and t is not None
+                                 and t <= reference + DRIVE_THROUGH_MARGIN) else "stop"
+        if kind == "stop":
+            stops[drv] += 1
+    return stops
+
+
 def race_rows(data: dict) -> list[dict]:
     """Ergebniszeilen fürs Rennen (Format geprüft am Madring 2026):
     gap_to_leader ist eine Zahl (Sekunden) oder ein Text wie "+1 LAP";
     Ausfälle haben position None und dnf True. Wertung: erst die Klassierten
     nach Position, dann Ausfälle nach gefahrenen Runden (wie offiziell)."""
     grid = data.get("grid", {})
-    pits: dict[str, int] = {}
-    for p in data.get("pit_stops", []):
-        pits[p["driver"]] = pits.get(p["driver"], 0) + 1
+    lane = lane_visits(data)
+    stops = tyre_stops(data)
     rows = []
     for r in data.get("results", []):
         start = grid.get(r["driver"])
@@ -270,7 +334,10 @@ def race_rows(data: dict) -> list[dict]:
         rows.append({"driver": r["driver"], "position": pos, "grid": start,
                      "change": (start - pos) if start and pos else None,
                      "gap": r["gap"], "duration": _num(r["duration"]), "laps": r["laps"],
-                     "points": r.get("points") or 0, "pits": pits.get(r["driver"], 0),
+                     "points": r.get("points") or 0,
+                     # Stopps = Reifenwechsel; ohne Stint-Daten Rückfall auf Durchfahrten
+                     "pits": stops.get(r["driver"], lane.get(r["driver"], 0)) if stops
+                             else lane.get(r["driver"], 0),
                      "status": "DSQ" if r.get("dsq") else "DNS" if r.get("dns") else
                                "DNF" if r.get("dnf") else None})
     classified = sorted((x for x in rows if x["position"]), key=lambda x: x["position"])
@@ -291,7 +358,7 @@ def render_race(ax, data: dict) -> list[dict]:
                          "Ein paar Minuten warten und mit --refresh erneut versuchen")
     teams = data.get("teams", {})
     header = [("POS", 0.06, "right"), ("DRIVER", 0.125, "left"), ("GRID", 0.33, "right"),
-              ("+/–", 0.43, "right"), ("GAP", 0.70, "right"), ("PIT", 0.82, "right"), ("PTS", 0.97, "right")]
+              ("+/–", 0.43, "right"), ("GAP", 0.70, "right"), ("STOPS", 0.84, "right"), ("PTS", 0.97, "right")]
     table = []
     for r in rows:
         tc = team_color(teams.get(r["driver"]))
@@ -324,7 +391,7 @@ def render_race(ax, data: dict) -> list[dict]:
     notes = []
     if unclassified(data):
         notes.append("No result: " + ", ".join(unclassified(data)))
-    notes.append("PIT = pit lane visits (incl. penalties) · +/– = places vs. starting grid")
+    notes.append("STOPS = tyre changes · +/– = places vs. starting grid")
     ax.text(0.99, -0.02, "\n".join(notes), transform=ax.transAxes, ha="right", va="top",
             fontsize=7.5, color=COLORS["muted"], linespacing=1.5)
     return rows
@@ -347,6 +414,19 @@ def race_mismatches(data: dict) -> list[str]:
         if r["position"] and r["grid"] is None:
             problems.append(f"{r['driver']}: kein Startplatz gefunden")
     return problems
+
+
+def pit_notes(data: dict) -> list[str]:
+    """Info: Fahrer mit mehr Boxengassen-Durchfahrten als Reifenwechseln –
+    meist Durchfahrt hinter dem SC oder Strafe. Zum Gegenprüfen vor dem Posten."""
+    lane, stops = lane_visits(data), tyre_stops(data)
+    if not stops:
+        return ["Keine Stint-Daten – STOPS zeigt Boxengassen-Durchfahrten"]
+    extra = {d: lane.get(d, 0) - stops.get(d, 0) for d in lane if lane.get(d, 0) > stops.get(d, 0)}
+    if not extra:
+        return []
+    return [f"{len(extra)} Fahrer mit Durchfahrt(en) ohne Reifenwechsel: "
+            + ", ".join(f"{d} +{n}" for d, n in sorted(extra.items()))]
 
 
 def render_results(ax, data: dict) -> list[dict]:
