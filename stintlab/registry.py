@@ -17,6 +17,7 @@ from stintlab.analyses.race_pace import render_driver_pace, render_team_pace
 from stintlab.analyses.results import render_results
 from stintlab.analyses.sectors import render_sectors
 from stintlab.analyses.speed import render_speed_vs_sector, render_top_speed
+from stintlab.reels.ghost_lap import render_ghost_lap
 from stintlab.analyses.telemetry import render_telemetry
 
 
@@ -116,4 +117,9 @@ ANALYSES = {
     "top_speed": {"render": _top_speed, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "speed_vs_sector": {"render": _speed_vs_sector, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "team_pace": {"render": _team_pace, "sessions": {"R", "S"}},
+}
+
+# Reels (Videos 9:16) – in der post.toml unter [[reels]]
+REELS = {
+    "ghost_lap": render_ghost_lap,
 }

@@ -6,6 +6,7 @@ Trennung der Aufgaben:
   Titel, Quelle und das StintLab-Logo.
 """
 
+from functools import lru_cache
 from pathlib import Path
 import textwrap
 
@@ -58,11 +59,24 @@ SUBTITLE_MAX_LINES = 2
 FONT_FAMILY = ["Inter", "Segoe UI", "DejaVu Sans"]
 
 
+@lru_cache(maxsize=1)
+def resolve_font() -> str:
+    """Erste installierte Schrift aus FONT_FAMILY – einmal ermittelt.
+
+    Übergibt man matplotlib die ganze Liste, meldet es bei JEDEM Text
+    "findfont: Font family 'Inter' not found". Beim Reel (>1000 Bilder)
+    füllte das die Konsole und bremste das Rendern.
+    """
+    from matplotlib import font_manager
+    installed = {f.name for f in font_manager.fontManager.ttflist}
+    return next((f for f in FONT_FAMILY if f in installed), "DejaVu Sans")
+
+
 def apply_theme():
     """Setzt die Matplotlib-Grundeinstellungen für alle folgenden Plots."""
     plt.rcParams.update({
         "font.family": "sans-serif",
-        "font.sans-serif": FONT_FAMILY,
+        "font.sans-serif": [resolve_font()],
         "figure.facecolor": COLORS["bg"],
         "axes.facecolor": COLORS["plot"],
         "axes.edgecolor": COLORS["grid"],

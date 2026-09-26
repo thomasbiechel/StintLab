@@ -16,7 +16,7 @@ from pathlib import Path
 
 from stintlab.analyses.results import pit_notes, result_mismatches
 from stintlab.quali import quali_mismatches
-from stintlab.registry import ANALYSES
+from stintlab.registry import ANALYSES, REELS
 from stintlab.session import load_session, sign_mismatches
 from stintlab.style import new_slide, save_slide
 
@@ -33,6 +33,12 @@ def main() -> None:
     if not session.get("meeting_key"):
         sys.exit("In der post.toml fehlt meeting_key.")
 
+    config.setdefault("slides", [])
+    reels = config.get("reels", [])
+    for reel in reels:
+        if reel.get("analysis") not in REELS:
+            sys.exit(f"Unbekanntes Reel '{reel.get('analysis')}'. Verfügbar: {', '.join(REELS)}")
+
     # Zuerst alles prüfen, dann erst Daten laden – Fehler sollen früh auffallen
     for slide in config["slides"]:
         name = slide["analysis"]
@@ -45,7 +51,7 @@ def main() -> None:
 
     # Jede benötigte Session genau einmal laden
     sessions = {}
-    for stype in {slide.get("session", session["type"]) for slide in config["slides"]}:
+    for stype in {item.get("session", session["type"]) for item in config["slides"] + reels}:
         sessions[stype] = load_session(session["meeting_key"], stype, refresh=args.refresh)
 
     # Plausibilitätstest: Passt der gezeichnete Abstand zu den Positionsdaten?
@@ -83,6 +89,13 @@ def main() -> None:
         ANALYSES[slide["analysis"]]["render"](ax, sessions[slide.get("session", session["type"])], slide)
         filename = f"{i:02d}_{slide['analysis']}.png"
         path = save_slide(fig, out_dir / filename)
+        print(f"✓ {path}")
+
+    for i, reel in enumerate(reels, start=1):
+        filename = f"reel_{i:02d}_{reel['analysis']}.mp4"
+        print(f"… rendere {filename} (dauert etwa eine Minute)")
+        path = REELS[reel["analysis"]](sessions[reel.get("session", session["type"])], reel,
+                                       out_dir / filename)
         print(f"✓ {path}")
 
 

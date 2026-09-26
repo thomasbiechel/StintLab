@@ -1,0 +1,17 @@
+[session]
+meeting_key = 1295
+type = "Q"
+
+[[reels]]
+analysis  = "ghost_lap"
+part      = "Q3"
+hook      = "Where Russell found 0.8 s"
+result    = "Russell on pole by 0.837 s"
+replay_km = 4.0
+
+[[reels]]
+analysis = "ghost_lap"
+part     = "Q3"
+hook     = "Where Russell found 0.8 s"
+result   = "Russell on pole by 0.837 s"
+replay   = false

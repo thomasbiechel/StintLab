@@ -14,3 +14,7 @@ def test_long_subtitle_wraps_to_two_lines():
 def test_too_long_subtitle_is_rejected():
     with pytest.raises(ValueError, match="zu lang"):
         new_slide("Title", "word " * 60)  # ~300 Zeichen → mehr als 2 Zeilen
+
+def test_font_is_resolved_to_one_installed_family():
+    from stintlab.style import FONT_FAMILY, resolve_font
+    assert resolve_font() in FONT_FAMILY
