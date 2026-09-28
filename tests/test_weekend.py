@@ -51,7 +51,9 @@ def test_templates_are_valid_toml_with_suggested_titles():
     for stype in ("FP1", "FP2", "FP3", "SQ", "S", "Q", "R"):
         cfg = tomllib.loads(post_toml(meeting, stype, facts))
         assert cfg["session"] == {"meeting_key": 1296, "type": stype}
-        assert cfg["slides"][0]["analysis"] == "results"
+        # Qualifying/Sprint/Rennen: Podium als Titelseite, dann die Ergebnistabelle
+        first = ["podium", "results"] if stype in ("SQ", "S", "Q", "R") else ["results"]
+        assert [x["analysis"] for x in cfg["slides"][:len(first)]] == first
     race = tomllib.loads(post_toml(meeting, "R", facts))
     assert race["slides"][0]["title"] == "RUSSELL WINS BY 0.196 S"
     reel = tomllib.loads(reel_toml(meeting, "R", facts))

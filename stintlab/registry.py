@@ -14,8 +14,10 @@ from stintlab.analyses.ideal_lap import render_ideal_lap
 from stintlab.analyses.lap_times import render_lap_times
 from stintlab.analyses.long_runs import render_long_runs
 from stintlab.analyses.pit_cycle import render_pit_cycle
+from stintlab.analyses.podium import render_podium
 from stintlab.analyses.positions import render_positions
 from stintlab.analyses.race_pace import render_driver_pace, render_team_pace
+from stintlab.analyses.preview import render_chances, render_form, render_track, render_weather
 from stintlab.analyses.results import render_results
 from stintlab.analyses.sectors import render_sectors
 from stintlab.analyses.sector_delta import render_sector_delta
@@ -136,11 +138,16 @@ def _speed_vs_sector(ax, data, slide):
     render_speed_vs_sector(ax, data, slide.get("sector", 2), slide.get("part"), slide.get("compound"))
 
 
+def _podium(ax, data, slide):
+    render_podium(ax, data)
+
+
 def _results(ax, data, slide):
     render_results(ax, data)
 
 
 ANALYSES = {
+    "podium": {"render": _podium, "sessions": {"Q", "SQ", "R", "S"}},
     "gap_between": {"render": _gap_between, "sessions": {"R", "S"}},
     "pit_cycle": {"render": _pit_cycle, "sessions": {"R", "S"}},
     "lap_times": {"render": _lap_times, "sessions": {"R", "S", "FP1", "FP2", "FP3"}},
@@ -157,6 +164,12 @@ ANALYSES = {
     "top_speed": {"render": _top_speed, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "speed_vs_sector": {"render": _speed_vs_sector, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "team_pace": {"render": _team_pace, "sessions": {"R", "S"}},
+    # Race Preview (Donnerstag) – Daten aus stintlab.preview, keine einzelne Session
+    "preview_track": {"render": lambda ax, data, slide: render_track(ax, data), "sessions": {"PREVIEW"}},
+    "preview_weather": {"render": lambda ax, data, slide: render_weather(ax, data), "sessions": {"PREVIEW"},
+                        "source": "Data: OpenF1 · Open-Meteo"},
+    "preview_form": {"render": lambda ax, data, slide: render_form(ax, data), "sessions": {"PREVIEW"}},
+    "preview_chances": {"render": lambda ax, data, slide: render_chances(ax, data), "sessions": {"PREVIEW"}},
 }
 
 # Reels (Videos 9:16) – in der post.toml unter [[reels]]

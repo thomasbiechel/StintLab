@@ -128,13 +128,18 @@ def find_session_key(meeting_key: int, session_type: str, refresh: bool = False)
 # Felder, in denen nach dem Suchbegriff gesucht wird. Ort und Strecke sind nötig:
 # 2026 heißt das Rennen in Sepang (Malaysia) offiziell „Bahrain Grand Prix“.
 MEETING_FIELDS = ("meeting_name", "meeting_official_name", "location", "country_name", "circuit_short_name")
+# Gebräuchliche Namen, die in keinem OpenF1-Feld stehen (Sepang heißt dort „Kuala Lumpur“)
+QUERY_ALIASES = {"sepang": "kuala lumpur", "malaysia": "kuala lumpur", "cota": "austin",
+                 "hungaroring": "budapest", "yas marina": "yas", "abu dhabi": "yas", "brasil": "são paulo",
+                 "brazil": "são paulo", "interlagos": "são paulo", "vegas": "las vegas", "qatar": "lusail"}
 
 
 def match_meetings(meetings: list[dict], query: str, now=None) -> list[dict]:
     """Passende Wochenenden, das zeitlich nächstliegende zuerst.
 
     query: Teil von Name, Ort, Land oder Strecke (ohne Groß-/Kleinschreibung),
-           eine meeting_key als Zahl oder "latest" (das letzte begonnene).
+           eine meeting_key als Zahl, "latest" (das letzte begonnene) oder
+           "next" (das nächste, noch nicht begonnene – für das Race Preview).
     """
     from datetime import datetime, timezone
     now = now or datetime.now(timezone.utc)
@@ -150,8 +155,31 @@ def match_meetings(meetings: list[dict], query: str, now=None) -> list[dict]:
     if q == "latest":
         begun = [m for m in meetings if start(m) and start(m) <= now]
         return sorted(begun, key=start, reverse=True)[:1]
+    if q == "next":
+        ahead = [m for m in meetings if start(m) and start(m) > now and not m.get("is_cancelled")
+                 and "testing" not in str(m.get("meeting_name", "")).lower()]
+        return sorted(ahead, key=start)[:1]
     hits = [m for m in meetings if any(q in str(m.get(f) or "").lower() for f in MEETING_FIELDS)]
+    if not hits and q in QUERY_ALIASES:
+        return match_meetings(meetings, QUERY_ALIASES[q], now)
     return sorted(hits, key=lambda m: abs((start(m) - now).total_seconds()) if start(m) else float("inf"))
+
+
+def meetings_of(year: int, refresh: bool = False) -> list[dict]:
+    """Alle Wochenenden eines Jahres (gemerkt in meetings/<Jahr>.json)."""
+    return _cached_list(CACHE_DIR / "meetings" / f"{year}.json", "meetings", {"year": year}, refresh)
+
+
+def meeting_by_key(meeting_key: int) -> dict | None:
+    """Wochenende aus den gemerkten Jahreslisten (meetings/<Jahr>.json) – ohne Netz."""
+    for f in sorted((CACHE_DIR / "meetings").glob("[0-9][0-9][0-9][0-9].json")):
+        try:
+            for m in json.loads(f.read_text(encoding="utf-8")):
+                if m.get("meeting_key") == meeting_key:
+                    return m
+        except (OSError, ValueError):
+            continue
+    return None
 
 
 def find_meeting(query: str, year: int, refresh: bool = False) -> dict:
@@ -159,7 +187,7 @@ def find_meeting(query: str, year: int, refresh: bool = False) -> dict:
     path = CACHE_DIR / "meetings" / f"{year}.json"
     meetings = _cached_list(path, "meetings", {"year": year}, refresh)
     hits = match_meetings(meetings, query)
-    if (not hits or str(query).lower() == "latest") and not refresh:
+    if (not hits or str(query).lower() in ("latest", "next")) and not refresh:
         try:   # gemerkte Liste evtl. veraltet (neues Wochenende) → einmal neu laden
             meetings = _cached_list(path, "meetings", {"year": year}, True)
             hits = match_meetings(meetings, query)

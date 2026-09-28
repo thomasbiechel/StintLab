@@ -40,6 +40,7 @@ from pathlib import Path
 import matplotlib
 import numpy as np
 from matplotlib import animation
+from matplotlib import patheffects
 from matplotlib import pyplot as plt
 from matplotlib.collections import LineCollection
 from matplotlib.colors import to_rgba
@@ -242,6 +243,7 @@ def prepare(data: dict, reel: dict) -> dict:
 
     from stintlab.reels.chase3d import Scene   # hier importiert: chase3d nutzt Track aus diesem Modul
     scene = Scene(data, a, b)
+    scene.configure(reel)
     if reel.get("open_at") is not None:
         t_open = t_finish - float(reel["open_at"])
     else:
@@ -486,6 +488,8 @@ def render_race_story(data: dict, reel: dict, path: Path) -> Path:
                         color=COLORS["text"])
     open_txt += [open_gap, fig.text(0.5, 0.07, f"{b} behind {a}", ha="center", va="center", fontsize=14,
                                     color=COLORS["muted"])]
+    for _tx in open_txt:       # dunkle Kontur: bei Tageslicht steht die Schrift auf hellem Himmel
+        _tx.set_path_effects([patheffects.withStroke(linewidth=4, foreground="black", alpha=0.75)])
     open_hist: list[float] = []
     from stintlab.reels.chase3d import MiniMap
     minimap = MiniMap(fig, prep["scene"])
@@ -507,7 +511,8 @@ def render_race_story(data: dict, reel: dict, path: Path) -> Path:
     txt_center_sub = fig.text(0.5, 0.52, "", ha="center", va="center", fontsize=17, color=COLORS["muted"],
                               wrap=True)
     fig.text(0.94, 0.965, "STINTLAB", ha="right", va="center", fontsize=11, fontweight="bold",
-             color=COLORS["accent"])
+             color=COLORS["accent"],
+             path_effects=[patheffects.withStroke(linewidth=3, foreground="black", alpha=0.6)])
     txt_foot = fig.text(0.06, 0.245, "", ha="left", va="top", fontsize=7.5, color=COLORS["muted"])
 
     def visible(*shown) -> None:

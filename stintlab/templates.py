@@ -31,15 +31,19 @@ SLIDES = {
             ("ideal_lap", {"view": "ideal", "compound": "SOFT"}, "todo",
              "Best {s} sectors on Softs added up · ▲▼ = places gained vs. best lap · fuel loads unknown"),
             ("sectors", {"compound": "SOFT"}, "todo", "Each driver's best valid {s} sector time on Softs")],
-    "SQ": [("results", {}, "pole", "Official sprint qualifying classification"),
+    "SQ": [("podium", {}, "pole", "Sprint qualifying · top three"),
+           ("results", {}, "classification", "Official sprint qualifying classification"),
            ("ideal_lap", {"view": "both"}, "todo", "Each driver's best sectors added up vs. the fastest lap")],
-    "Q": [("results", {}, "pole", "Official qualifying classification · fastest time in each part in purple"),
+    "Q": [("podium", {}, "pole", "Qualifying · top three in Q3"),
+          ("results", {}, "classification", "Official qualifying classification · fastest time in each part in purple"),
           ("telemetry", {"part": "Q3"}, "telemetry", "Fastest Q3 laps of the top two · speed and gap over the lap"),
           ("ideal_lap", {"part": "Q3", "view": "both"}, "todo", "Each Q3 driver's best sectors added up vs. the pole lap"),
           ("sectors", {"part": "Q3"}, "todo", "Each Q3 driver's best valid sector time")],
-    "S": [("results", {}, "win", "Official sprint classification · +/– = places vs. starting grid"),
+    "S": [("podium", {}, "win", "Sprint · top three at the flag"),
+          ("results", {}, "classification", "Official sprint classification · +/– = places vs. starting grid"),
           ("driver_pace", {}, "todo", "Clean sprint laps only · traffic affects the numbers")],
-    "R": [("results", {}, "win", "Official race classification · +/– = places vs. starting grid"),
+    "R": [("podium", {}, "win", "Race · top three at the flag"),
+          ("results", {}, "classification", "Official race classification · +/– = places vs. starting grid"),
           ("driver_pace", {}, "todo", "Clean race laps only · strategy and traffic affect the numbers"),
           ("team_pace", {}, "todo", "Median of both drivers' clean race laps")],
 }
@@ -82,6 +86,8 @@ def slide_title(kind: str, stype: str, facts: dict) -> tuple[str, bool]:
     label = SESSION_LABEL[stype].upper()
     if kind == "results":
         return f"{facts['P1']} FASTEST IN {label}", True
+    if kind == "classification":            # Ergebnistabelle hinter dem Podium (das hat die Schlagzeile)
+        return "FULL CLASSIFICATION", True
     if kind == "pole":
         return (f"{facts['P1']} ON POLE BY {gap:.3f} S" if gap else f"{facts['P1']} ON POLE"), True
     if kind == "win":
@@ -139,8 +145,10 @@ def post_toml(meeting: dict, stype: str, facts: dict, long_run: str | None = Non
     return "\n".join(lines)
 
 
-def reel_toml(meeting: dict, stype: str, facts: dict) -> str | None:
-    """Inhalt der post.toml für die Reels einer Session (oder None)."""
+def reel_toml(meeting: dict, stype: str, facts: dict, compare: dict | None = None) -> str | None:
+    """Inhalt der post.toml für die Reels einer Session (oder None).
+    compare: Vorjahres-Qualifying (stintlab.compare.fetch_quali + "year") → zusätzlicher
+    Ghost-Lap-Reel „Pole dieses Jahr vs. Pole Vorjahr“."""
     if stype not in REELS:
         return None
     gap = facts["gap"]
@@ -158,4 +166,16 @@ def reel_toml(meeting: dict, stype: str, facts: dict) -> str | None:
         lines.append(f"hook     = {_toml_value(hook.format(**fmt))}   # TODO schärfen")
         lines.append(f"result   = {_toml_value(result.format(**fmt))}")
         lines.append("")
+    if compare and stype == "Q":
+        lines += [f"# Pole {meeting.get('year', '')} vs. Pole {compare['year']} ({compare['pole']}) – gleiche Strecke,",
+                  f"# Vorjahr automatisch gefunden · Wetter {compare['year']}: {compare['weather']}"]
+        if compare.get("rain"):
+            lines.append(f"# ⚠ Regen im Qualifying {compare['year']} gemeldet – Highlights ansehen, ob der Vergleich fair ist")
+        if compare.get("no_laps"):
+            lines.append(f"# {compare['year']}: OpenF1 ohne Rundendaten – Pole-Runde wird aus Positionen rekonstruiert")
+        lines += ["[[reels]]", 'analysis = "ghost_lap"', 'part     = "Q3"',
+                  f"compare  = {{ meeting_key = {compare['meeting_key']} }}",
+                  "open_at  = 0          # 3D-Anfang am Start der Runde (Vorjahr als halbtransparenter Geist)",
+                  "# replay_km   = 5.2   # Zeitlupe an eine Stelle legen (Standard: größte Abstandsänderung)",
+                  '# replay_note = "..."  # eine Zeile Erklärung in der Zeitlupe', ""]
     return "\n".join(lines)

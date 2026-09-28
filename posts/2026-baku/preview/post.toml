@@ -1,0 +1,25 @@
+# Race Preview Baku 2026 – erzeugt von preview.py, Titel frei änderbar
+
+[session]
+meeting_key = 1295
+type = "PREVIEW"
+
+[[slides]]
+analysis = "preview_track"
+title = "Baku – what to know"
+subtitle = "Last race here in 2025 · corner numbers as used by F1"
+
+[[slides]]
+analysis = "preview_weather"
+title = "Baku weekend forecast"
+subtitle = "Friday to Sunday at the circuit · local times"
+
+[[slides]]
+analysis = "preview_form"
+title = "Mercedes set the race pace"
+subtitle = "Team race pace in Zandvoort, Monza, Madrid · newest race counts most"
+
+[[slides]]
+analysis = "preview_chances"
+title = "Who can win in Baku?"
+subtitle = "Recent form plus last year's pace here · an assessment, not a prediction"

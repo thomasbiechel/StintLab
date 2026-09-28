@@ -11,8 +11,15 @@ Welt in Metern: x, y aus /location (÷ Maßstab), z = Höhe aus /location, leich
 Kamera: BACK m hinter B, HEIGHT m darüber, Blick auf die Mitte zwischen A und B + AHEAD m.
 Blickrichtung aus B's Bewegung der letzten CAM_SMOOTH_S Sekunden → ruhige Kamera.
 
+TAGESZEIT (light = "day" | "dusk" | "night", siehe LIGHTS): aus Startzeit der Session
++ Zeitzone der Strecke (vor 18 Uhr Ortszeit Tag, bis 19:30 Dämmerung, danach Nacht).
+Baku-Qualifying 17 Uhr → Tag; Singapur, Las Vegas → Nacht. In der post.toml mit
+light = "..." überschreibbar, ebenso scenery = "city" | "park".
+
 UMGEBUNG (Environment): Gras neben der Strecke, rot-weiße Randsteine in Kurven,
-Leitplanken, Bäume und ein Horizont. Alles aus der Referenzrunde abgeleitet und
+Leitplanken, Bäume und ein Horizont. Auf Stadtkursen (scenery = "city", erkannt am
+Streckennamen, siehe STREET_CIRCUITS) stattdessen Häuserblöcke mit einzelnen
+beleuchteten Fenstern, Mauern direkt an der Strecke und Gehweg statt Gras. Alles aus der Referenzrunde abgeleitet und
 bewusst dunkel gehalten – die Autos und die weiße Schrift bleiben das Hellste
 im Bild. Die Bäume sind erfunden (Zufall mit festem Startwert), nicht die echten.
 
@@ -28,6 +35,7 @@ from __future__ import annotations
 import numpy as np
 from matplotlib.collections import LineCollection, PolyCollection
 from matplotlib.colors import to_rgb
+from matplotlib.patches import Rectangle as plt_Rectangle
 
 from stintlab import openf1
 from stintlab.session import _parse
@@ -50,6 +58,85 @@ ENV_STEP = 2                             # jeden 2. Punkt der Referenzrunde (≈
 GRASS_RGB = np.array([0.055, 0.105, 0.065])
 BARRIER_RGB = np.array([0.42, 0.43, 0.47])
 SKY_HORIZON, SKY_TOP = "#1a2233", COLORS["bg"]
+
+# Stadtkurse
+STREET_CIRCUITS = ("baku", "monaco", "monte carlo", "singapore", "marina bay", "jeddah", "las vegas",
+                   "madring", "madrid")
+CITY_WALL_OFF, CITY_WALL_H = 2.5, 1.3
+PAVEMENT_RGB = np.array([0.075, 0.075, 0.085])
+WALL_RGB = np.array([0.5, 0.5, 0.52])
+FACADES = np.array([[0.36, 0.31, 0.24], [0.30, 0.30, 0.32], [0.40, 0.38, 0.34], [0.32, 0.22, 0.17],
+                    [0.26, 0.28, 0.30]]) * 0.75
+WINDOW_RGB = np.array([0.95, 0.78, 0.45])
+WINDOW_MAX = 0.35        # so viele Fenster werden angelegt; wie viele leuchten, sagt LIGHTS[..]["windows"]
+
+_BG = tuple(to_rgb(COLORS["bg"]))
+LIGHTS = {
+    "day": {"sky_top": "#3f78b5", "sky_hor": "#c9d7e3", "fog": (0.70, 0.76, 0.81),
+            "far_park": (0.19, 0.26, 0.15), "far_city": (0.33, 0.33, 0.34),
+            "grass": (0.17, 0.32, 0.12), "pavement": (0.40, 0.40, 0.41), "asphalt": (0.27, 0.27, 0.29),
+            "barrier": (0.72, 0.72, 0.75), "wall": (0.80, 0.79, 0.76), "facade": 2.1, "windows": 0.0,
+            "trees": 2.2, "grid": 0.0, "edge": "#ececf0"},
+    "dusk": {"sky_top": COLORS["bg"], "sky_hor": "#1a2233", "fog": _BG, "far_park": _BG, "far_city": _BG,
+             "grass": (0.055, 0.105, 0.065), "pavement": (0.075, 0.075, 0.085), "asphalt": (0.19, 0.19, 0.23),
+             "barrier": (0.42, 0.43, 0.47), "wall": (0.5, 0.5, 0.52), "facade": 1.0, "windows": 0.18,
+             "trees": 1.0, "grid": 0.5, "edge": "#8a8a96"},
+    "night": {"sky_top": "#030405", "sky_hor": "#0f1420", "fog": (0.03, 0.03, 0.04), "far_park": _BG,
+              "far_city": _BG, "grass": (0.035, 0.07, 0.04), "pavement": (0.055, 0.055, 0.06),
+              "asphalt": (0.17, 0.17, 0.2), "barrier": (0.38, 0.39, 0.42), "wall": (0.44, 0.44, 0.46),
+              "facade": 0.65, "windows": 0.35, "trees": 0.8, "grid": 0.35, "edge": "#9a9aa6"},
+}
+_FOG = np.array(_BG)     # Dunstfarbe des aktuellen Bildes (draw_scene setzt sie)
+FLOOR_M, WIN_EVERY_M = 3.5, 3.2
+
+
+def meeting_for(session_key) -> dict | None:
+    """Wochenende zur Session: meetings/<key>_sessions.json → meetings/<Jahr>.json
+    (die Session-Listen selbst enthalten weder Ort noch Zeitzone)."""
+    import json
+    folder = openf1.CACHE_DIR / "meetings"
+    meeting_key = None
+    for f in folder.glob("*_sessions.json"):
+        try:
+            if any(sess.get("session_key") == session_key for sess in json.loads(f.read_text(encoding="utf-8"))):
+                meeting_key = int(f.name.split("_")[0])
+                break
+        except (OSError, ValueError):
+            continue
+    if meeting_key is None:
+        return None
+    for f in folder.glob("[0-9][0-9][0-9][0-9].json"):
+        try:
+            for m in json.loads(f.read_text(encoding="utf-8")):
+                if m.get("meeting_key") == meeting_key:
+                    return m
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def scenery_for(session_key) -> str:
+    """ "city" für Stadtkurse, sonst "park"."""
+    m = meeting_for(session_key)
+    if not m:
+        return "park"
+    name = " ".join(str(m.get(k) or "") for k in ("location", "circuit_short_name", "meeting_name"))
+    return "city" if any(w in name.lower() for w in STREET_CIRCUITS) else "park"
+
+
+def light_for(session_key, when) -> str:
+    """Tageszeit aus Ortszeit der Session: vor 18 Uhr Tag, bis 19:30 Dämmerung, sonst Nacht.
+    Baku 2026 Q3 um 17:02 ist heller Tag (Sonnenuntergang ~19 Uhr) – 17 Uhr als Grenze war zu früh."""
+    from datetime import timedelta
+    m = meeting_for(session_key)
+    off = (m or {}).get("gmt_offset")
+    if not off or when is None:
+        return "day"
+    sign = -1 if str(off).startswith("-") else 1
+    h, mi, *_ = (int(x) for x in str(off).lstrip("+-").split(":"))
+    local = when + sign * timedelta(hours=h, minutes=mi)
+    hour = local.hour + local.minute / 60
+    return "day" if 6 <= hour < 18 else ("dusk" if 18 <= hour < 19.5 else "night")
 
 # Überholen nebeneinander
 PASS_WINDOW_S = 6.0
@@ -109,6 +196,22 @@ class Scene:
             self.col[b] = COLORS["text"]
         self.pass_side: float | None = None
         self.pass_t: float | None = None
+        self.ghost: str | None = None     # dieser Fahrer wird halbtransparent gezeichnet (Ghost Lap)
+        self.scenery = scenery_for(data.get("session_key"))    # vor dem ersten Bild überschreibbar
+        # Uhrzeit der Referenz-Session (beim Vorjahresvergleich die aktuelle, nicht das Vorjahr)
+        self.light = light_for(data.get("session_key"), self.t0s.get(rd, self.t0))
+        self._env = None
+
+    def configure(self, reel: dict) -> None:
+        """scenery / light aus der post.toml übernehmen (vor dem ersten Bild)."""
+        if reel.get("scenery") is not None:
+            if reel["scenery"] not in ("city", "park"):
+                raise ValueError('scenery muss "city" oder "park" sein')
+            self.scenery = reel["scenery"]
+        if reel.get("light") is not None:
+            if reel["light"] not in LIGHTS:
+                raise ValueError(f'light muss eins von {", ".join(LIGHTS)} sein')
+            self.light = reel["light"]
         self._env = None
 
     def _zfun(self, location, t0):
@@ -214,7 +317,7 @@ class Camera:
 
 def _fog(rgb: np.ndarray, depth: np.ndarray) -> np.ndarray:
     k = np.clip(1 - depth / FOG_M, 0.3, 1.0)[:, None]
-    return rgb * k + np.array(to_rgb(COLORS["bg"])) * (1 - k)
+    return rgb * k + _FOG * (1 - k)
 
 
 class Environment:
@@ -226,6 +329,17 @@ class Environment:
         N = np.vstack([scene.N[::ENV_STEP], scene.N[:1]])
         z = P[:, 2:3]
         half = TRACK_W / 2
+        self.city = scene.scenery == "city"
+        L = LIGHTS[scene.light]
+        self.fog = np.array(to_rgb(L["fog"]))
+        self.sky = (L["sky_top"], L["sky_hor"])
+        self.far = to_rgb(L["far_city" if self.city else "far_park"])
+        self.asphalt, self.edge, self.grid_alpha = np.array(L["asphalt"]), L["edge"], L["grid"]
+        self.ground_rgb = np.array(L["pavement"] if self.city else L["grass"])
+        self.barrier_rgb = np.array(L["wall"] if self.city else L["barrier"])
+        self.facade_gain, self.window_lit, self.tree_gain = L["facade"], L["windows"], L["trees"]
+        wall_off = CITY_WALL_OFF if self.city else BARRIER_OFF
+        wall_h = CITY_WALL_H if self.city else BARRIER_H
         self.edges = {}
         for side in (1, -1):
             inner = np.column_stack([P[:, :2] + side * N * half, z])
@@ -251,13 +365,14 @@ class Environment:
         allp = scene.P[::4, :2]
         self.barriers = {}
         for side in (1, -1):
-            base = P[:, :2] + side * N * (half + BARRIER_OFF)
+            base = P[:, :2] + side * N * (half + wall_off)
             near = np.array([np.min(np.hypot(allp[:, 0] - x, allp[:, 1] - y)) for x, y in base])
-            ok = near > half + BARRIER_OFF - 2.0
+            ok = near > half + wall_off - 2.0
             lo = np.column_stack([base, z])
-            hi = np.column_stack([base, z + BARRIER_H])
+            hi = np.column_stack([base, z + wall_h])
             self.barriers[side] = (lo, hi, ok)
 
+        self._build_city(scene) if self.city else None
         # Bäume: zufällig, aber immer gleich (fester Startwert), mit Abstand zur Strecke
         rng = np.random.default_rng(7)
         n = len(P)
@@ -266,11 +381,11 @@ class Environment:
         off = half + rng.uniform(TREE_MIN, TREE_MAX, TREE_N * 2)
         cand = P[idx, :2] + (side * off)[:, None] * N[idx] + rng.normal(0, 6, (TREE_N * 2, 2))
         near = np.array([np.min(np.hypot(allp[:, 0] - x, allp[:, 1] - y)) for x, y in cand])
-        keep = np.where(near > half + TREE_MIN - 4)[0][:TREE_N]
+        keep = np.where(near > half + TREE_MIN - 4)[0][:0 if self.city else TREE_N]
         self.tree_base = np.column_stack([cand[keep], P[idx[keep], 2] - 0.05])
         self.tree_h = rng.uniform(9.0, 17.0, len(keep))
         g = rng.uniform(0.0, 1.0, len(keep))
-        self.tree_rgb = np.column_stack([0.05 + 0.04 * g, 0.12 + 0.07 * g, 0.07 + 0.03 * g])
+        self.tree_rgb = np.clip(np.column_stack([0.05 + 0.04 * g, 0.12 + 0.07 * g, 0.07 + 0.03 * g]) * self.tree_gain, 0, 1)
 
         # Start/Ziel: Karomuster quer über die Strecke + Portal darüber
         p0, n0, t0 = scene.P[0], scene.N[0], scene.T[0]
@@ -296,6 +411,97 @@ class Environment:
                   np.r_[p0[:2] - n0 * w, p0[2] + top], np.r_[p0[:2] + n0 * w, p0[2] + top]])
         self.gantry = np.array(g)
 
+    def _build_city(self, scene: Scene) -> None:
+        """Häuserblöcke in zwei Reihen entlang der Strecke – zufällig, aber immer gleich."""
+        rng = np.random.default_rng(11)
+        half = TRACK_W / 2
+        allp = scene.P[::2, :2]
+        spacing = scene.cum[-1] / len(scene.P)
+        step = max(int(26.0 / spacing), 1)
+        foot, z0s, hs, cols, centers, radii = [], [], [], [], [], []
+        for side in (1, -1):
+            for i in range(0, len(scene.P), step):
+                for o0, o1, h0, h1 in ((9.0, 20.0, 10.0, 28.0), (36.0, 60.0, 18.0, 55.0)):
+                    if rng.random() < 0.2:
+                        continue
+                    off, w, dp = half + rng.uniform(o0, o1), rng.uniform(16, 32), rng.uniform(12, 24)
+                    p, t, n = scene.P[i], scene.T[i], scene.N[i] * side
+                    c0 = p[:2] + n * off - t * w / 2
+                    corners = np.array([c0, c0 + t * w, c0 + t * w + n * dp, c0 + n * dp])
+                    probe = np.vstack([corners, corners.mean(0)])
+                    d = np.sqrt(((probe[:, None, :] - allp[None, :, :]) ** 2).sum(-1)).min()
+                    if d < half + 6.0:
+                        continue
+                    c, r = corners.mean(0), np.hypot(w, dp) / 2
+                    if centers and (np.hypot(*(np.array(centers) - c).T) < (np.array(radii) + r) * 0.75).any():
+                        continue
+                    foot.append(corners)
+                    z0s.append(p[2] - 0.1)
+                    hs.append(rng.uniform(h0, h1))
+                    cols.append(np.clip(FACADES[rng.integers(len(FACADES))] * rng.uniform(0.85, 1.1) * self.facade_gain, 0, 1))
+                    centers.append(c)
+                    radii.append(r)
+        self.bld_foot = np.array(foot).reshape(-1, 4, 2)
+        self.bld_z0, self.bld_h, self.bld_rgb = np.array(z0s), np.array(hs), np.array(cols).reshape(-1, 3)
+        # beleuchtete Fenster: pro Haus und Fassade (Welt-Koordinaten), einmal ausgewürfelt
+        self.bld_windows: list[list[tuple[int, np.ndarray]]] = []
+        for b in range(len(self.bld_foot)):
+            wins = []
+            for f in range(4):
+                a, c = self.bld_foot[b][f], self.bld_foot[b][(f + 1) % 4]
+                length = float(np.hypot(*(c - a)))
+                u = (c - a) / (length or 1.0)
+                for fl in range(1, int(self.bld_h[b] / FLOOR_M)):
+                    for k in range(int(length / WIN_EVERY_M)):
+                        r = rng.random()
+                        if r > WINDOW_MAX:
+                            continue
+                        x0 = a + u * (k * WIN_EVERY_M + 0.9)
+                        x1 = x0 + u * 1.4
+                        zb = self.bld_z0[b] + fl * FLOOR_M - 2.3
+                        wins.append((f, np.array([np.r_[x0, zb], np.r_[x1, zb], np.r_[x1, zb + 1.5], np.r_[x0, zb + 1.5]]), r))
+            self.bld_windows.append(wins)
+
+    def draw_buildings(self, ax, cam: Camera) -> None:
+        if not self.city or not len(self.bld_foot):
+            return
+        n = len(self.bld_foot)
+        bot = np.concatenate([self.bld_foot, self.bld_z0[:, None, None].repeat(4, 1)], axis=2)
+        top = bot.copy()
+        top[:, :, 2] += self.bld_h[:, None]
+        px, py, pz = cam.proj(np.concatenate([bot, top], axis=1).reshape(-1, 3))
+        px, py, pz = (a.reshape(n, 8) for a in (px, py, pz))
+        ok = (pz.min(1) > 3) & (pz.min(1) < VIEW_M) & (np.abs(px).min(1) < 1.2) & (py.min(1) < 1.2)
+        polys, colors = [], []
+        for b in np.where(ok)[0][np.argsort(-pz[ok].mean(1))]:
+            depth = pz[b].mean()
+            center = np.r_[self.bld_foot[b].mean(0), self.bld_z0[b] + self.bld_h[b] / 2]
+            faces = []
+            for f in range(4):
+                i, j = f, (f + 1) % 4
+                mid = (bot[b, i] + bot[b, j] + top[b, i] + top[b, j]) / 4
+                normal = np.cross(bot[b, j] - bot[b, i], [0, 0, 1.0])
+                normal /= np.linalg.norm(normal) or 1.0
+                if normal @ (mid - center) < 0:
+                    normal = -normal
+                if normal @ (cam.C - mid) <= 0:
+                    continue                                   # Rückseite
+                shade = 0.55 + 0.45 * abs(float(normal @ LIGHT))
+                faces.append(f)
+                polys.append(np.column_stack([px[b, [i, j, 4 + j, 4 + i]], py[b, [i, j, 4 + j, 4 + i]]]))
+                colors.append(_fog(self.bld_rgb[b][None] * shade, np.array([depth]))[0])
+            polys.append(np.column_stack([px[b, 4:], py[b, 4:]]))           # Dach
+            colors.append(_fog(self.bld_rgb[b][None] * 0.6, np.array([depth]))[0])
+            wins = [q for f, q, r in self.bld_windows[b] if f in faces and r < self.window_lit]
+            if wins:
+                wx, wy, wz = cam.proj(np.concatenate(wins))
+                for k in range(len(wins)):
+                    polys.append(np.column_stack([wx[4 * k:4 * k + 4], wy[4 * k:4 * k + 4]]))
+                    colors.append(_fog(WINDOW_RGB[None], np.array([depth]))[0])
+        if polys:
+            ax.add_collection(PolyCollection(polys, facecolors=colors, edgecolors=np.clip(np.array(colors) * 0.8, 0, 1),
+                                             linewidths=0.3, zorder=4))
+
     @staticmethod
     def _strip(cam: Camera, a: np.ndarray, b: np.ndarray, mask: np.ndarray | None = None):
         """Vierecke zwischen zwei Linien a und b (je n Punkte) → (Polygone, Tiefe, Index)."""
@@ -314,7 +520,7 @@ class Environment:
         y_h = cam.horizon_y()
         if y_h >= 1.0:
             return
-        top, hor = np.array(to_rgb(SKY_TOP)), np.array(to_rgb(SKY_HORIZON))
+        top, hor = np.array(to_rgb(self.sky[0])), np.array(to_rgb(self.sky[1]))
         u = np.linspace(0, 1, 64)[:, None]
         img = (hor * (1 - u) ** 2 + top * (1 - (1 - u) ** 2))[:, None, :]
         ax.imshow(img, extent=(-0.5625, 0.5625, max(y_h, -1.0), 1.0), origin="lower", aspect="auto",
@@ -325,7 +531,7 @@ class Environment:
         for side in (1, -1):
             q, d, _ = self._strip(cam, *self.edges[side])
             polys.append(q)
-            colors.append(_fog(np.tile(GRASS_RGB, (len(q), 1)), d))
+            colors.append(_fog(np.tile(self.ground_rgb, (len(q), 1)), d))
         q = np.concatenate(polys)
         c = np.concatenate(colors)
         if len(q):
@@ -375,7 +581,7 @@ class Environment:
         if not len(q):
             return
         order = np.argsort(-d)
-        c = _fog(np.tile(BARRIER_RGB, (len(q), 1)), d)
+        c = _fog(np.tile(self.barrier_rgb, (len(q), 1)), d)
         ax.add_collection(PolyCollection(q[order], facecolors=c[order], edgecolors=c[order] * 0.8,
                                          linewidths=0.3, zorder=3.5))
 
@@ -484,7 +690,7 @@ def _normals(W: np.ndarray) -> np.ndarray:
     return out
 
 
-def draw_car(ax, cam: Camera, pos, fw, col, name, z, label_side: int = 1):
+def draw_car(ax, cam: Camera, pos, fw, col, name, z, label_side: int = 1, alpha: float = 1.0):
     side = np.array([-fw[1], fw[0], 0])
     up = np.array([0.0, 0.0, 1.0])
     rgb = np.array(to_rgb(col))
@@ -500,7 +706,7 @@ def draw_car(ax, cam: Camera, pos, fw, col, name, z, label_side: int = 1):
     sx, sy, sz = cam.proj(shadow)
     if np.any(sz < 1):
         return
-    ax.fill(sx, sy, color="black", alpha=0.35, zorder=z, linewidth=0)
+    ax.fill(sx, sy, color="black", alpha=0.35 * alpha, zorder=z, linewidth=0)
 
     W = pos + np.outer(_FLAT[:, 0] * CAR, fw) + np.outer(_FLAT[:, 1] * CAR, side) + np.outer(_FLAT[:, 2] * CAR, up)
     px, py, pz = cam.proj(W)
@@ -516,7 +722,7 @@ def draw_car(ax, cam: Camera, pos, fw, col, name, z, label_side: int = 1):
     order = np.argsort(-np.array(depth))
     polys = [polys[i] for i in order]
     colors = np.array(colors)[order]
-    ax.add_collection(PolyCollection(polys, facecolors=colors, edgecolors=np.clip(colors * 0.7, 0, 1),
+    ax.add_collection(PolyCollection(polys, facecolors=colors, edgecolors=np.clip(colors * 0.7, 0, 1), alpha=alpha,
                                      linewidths=0.3, zorder=z + 0.5))
 
     cx, cy, _ = cam.proj(pos + [0, 0, 0.6 * CAR])
@@ -531,13 +737,16 @@ def draw_car(ax, cam: Camera, pos, fw, col, name, z, label_side: int = 1):
 
 def draw_scene(ax, scene: Scene, t: float) -> float:
     """Zeichnet ein Bild zur Zeit t (Sekunden ab t0). Gibt den laufenden Abstand zurück."""
+    global _FOG
     ax.clear()
-    ax.set_facecolor(COLORS["bg"])
     ax.axis("off")
     cam = Camera(scene, t)
     pa, fa = scene.pos(scene.a, t)
     pb, fb = scene.pos(scene.b, t)
     env = scene.environment()
+    _FOG = env.fog
+    # Boden bis zum Horizont (jenseits von Gras/Gehweg), darüber der Himmel
+    ax.add_patch(plt_Rectangle((-1, -1.5), 2, 3, facecolor=env.far, edgecolor="none", zorder=-2))
     env.draw_sky(ax, cam)
     ax.set_xlim(-0.5625, 0.5625)
     ax.set_ylim(-1.0, 1.0)
@@ -553,7 +762,8 @@ def draw_scene(ax, scene: Scene, t: float) -> float:
             m = z > 5
             if m.sum() > 1:
                 lines.append(np.column_stack([x[m], y[m]]))
-    ax.add_collection(LineCollection(lines, colors=COLORS["grid"], linewidths=0.6, alpha=0.5, zorder=0))
+    if env.grid_alpha:
+        ax.add_collection(LineCollection(lines, colors=COLORS["grid"], linewidths=0.6, alpha=env.grid_alpha, zorder=0))
 
     env.draw_ground(ax, cam)
 
@@ -565,14 +775,14 @@ def draw_scene(ax, scene: Scene, t: float) -> float:
     quads = np.stack([np.column_stack([xl[idx], yl[idx]]), np.column_stack([xl[idx + 1], yl[idx + 1]]),
                       np.column_stack([xr[idx + 1], yr[idx + 1]]), np.column_stack([xr[idx], yr[idx]])], axis=1)
     order = np.argsort(-zl[idx])
-    shade = np.clip(1 - zl[idx][order] / FOG_M, 0.3, 1)[:, None]
-    face = np.column_stack([0.16 * shade + 0.03, 0.16 * shade + 0.03, 0.19 * shade + 0.04, np.ones_like(shade)])
+    face = _fog(np.tile(env.asphalt, (len(order), 1)), zl[idx][order])
     ax.add_collection(PolyCollection(quads[order], facecolors=face, edgecolors=face, linewidths=0.3, zorder=2))
     for ex, ey in ((xl, yl), (xr, yr)):
-        ax.plot(np.where(ok, ex, np.nan), np.where(ok, ey, np.nan), color="#8a8a96", linewidth=0.9, zorder=3)
+        ax.plot(np.where(ok, ex, np.nan), np.where(ok, ey, np.nan), color=env.edge, linewidth=0.9, zorder=3)
     env.draw_track_details(ax, cam)
     env.draw_barriers(ax, cam)
     env.draw_trees(ax, cam)
+    env.draw_buildings(ax, cam)
 
     # Abstand als Band: B's Weg der nächsten `gap` Sekunden endet genau dort, wo A jetzt ist
     # (nicht, während die Autos nebeneinander auseinandergeschoben sind – dann läge es neben B)
@@ -594,12 +804,16 @@ def draw_scene(ax, scene: Scene, t: float) -> float:
 
     # Wer näher an der Kamera ist, wird zuletzt gezeichnet
     cars = sorted(((cam.proj(pa)[2][0], pa, fa, scene.a), (cam.proj(pb)[2][0], pb, fb, scene.b)), key=lambda c: -c[0])
+    # Ghost zuletzt (obenauf) und halbtransparent – überlappen sich die Autos (Ghost Lap am Start),
+    # sieht man beide
+    cars.sort(key=lambda c: c[3] == scene.ghost)
     # Namensschilder nach außen: nebeneinander bekommt das linke Auto sein Schild links
     xa_s, xb_s = cam.proj(pa)[0][0], cam.proj(pb)[0][0]
     beside = scene.separation(t) > 1.0
     for i, (_, p, fw, d) in enumerate(cars):
         is_left = (xa_s < xb_s) if d == scene.a else (xb_s < xa_s)
-        draw_car(ax, cam, p, fw, scene.col[d], d, 7 + 2 * i, label_side=-1 if (beside and is_left) else 1)
+        draw_car(ax, cam, p, fw, scene.col[d], d, 7 + 2 * i, label_side=-1 if (beside and is_left) else 1,
+                 alpha=0.45 if d == scene.ghost else 1.0)
     return g
 
 
@@ -610,6 +824,12 @@ class MiniMap:
 
     def __init__(self, fig, scene: Scene, box=(0.05, 0.60, 0.26, 0.19), sector_fracs: list[float] | None = None):
         self.scene = scene
+        # dunkler Hintergrund – vor Häusern (Stadtkurs) war die Karte sonst kaum zu sehen
+        from matplotlib.patches import FancyBboxPatch
+        self.backdrop = FancyBboxPatch((box[0] - 0.01, box[1] - 0.03), box[2] + 0.02, box[3] + 0.035,
+                                       boxstyle="round,pad=0.0,rounding_size=0.012", transform=fig.transFigure,
+                                       facecolor=COLORS["bg"], edgecolor="none", alpha=0.6, zorder=-0.5)
+        fig.add_artist(self.backdrop)
         self.ax = fig.add_axes(list(box))
         self.ax.set_aspect("equal")
         self.ax.axis("off")
@@ -642,3 +862,4 @@ class MiniMap:
     def set_visible(self, on: bool) -> None:
         self.ax.set_visible(on)
         self.label.set_visible(on)
+        self.backdrop.set_visible(on)

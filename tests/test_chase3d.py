@@ -45,3 +45,17 @@ def test_point_behind_camera_has_negative_depth(scene):
     cam = Camera(scene, t)
     behind = cam.C - cam.f * 10
     assert cam.proj(behind)[2][0] < 0
+
+
+def test_light_from_local_session_time(monkeypatch):
+    from datetime import datetime, timezone
+    import stintlab.reels.chase3d as c3
+    monkeypatch.setattr(c3, "meeting_for", lambda key: {"gmt_offset": "04:00:00"})
+    assert c3.light_for(1, datetime(2026, 9, 25, 13, 2, tzinfo=timezone.utc)) == "day"      # Baku Q3 17:02
+    assert c3.light_for(1, datetime(2026, 9, 25, 14, 30, tzinfo=timezone.utc)) == "dusk"    # 18:30
+    monkeypatch.setattr(c3, "meeting_for", lambda key: {"gmt_offset": "08:00:00"})
+    assert c3.light_for(1, datetime(2026, 10, 4, 12, 0, tzinfo=timezone.utc)) == "night"    # Singapur 20:00
+    monkeypatch.setattr(c3, "meeting_for", lambda key: {"gmt_offset": "-08:00:00"})
+    assert c3.light_for(1, datetime(2026, 11, 22, 6, 0, tzinfo=timezone.utc)) == "night"    # Las Vegas 22:00
+    monkeypatch.setattr(c3, "meeting_for", lambda key: None)
+    assert c3.light_for(1, datetime(2026, 9, 25, 13, 0, tzinfo=timezone.utc)) == "day"      # ohne Zeitzone: Tag

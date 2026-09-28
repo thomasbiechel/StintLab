@@ -12,7 +12,9 @@ Ablauf:
    auch in Ort, Land und Strecke.
 2. Beim ersten Aufruf pro Session: posts/<jahr>-<ort>/<session>/post.toml aus
    der Vorlage anlegen, Titel aus dem Ergebnis vorgeschlagen, Rest mit # TODO.
-   Für Quali und Rennen zusätzlich <session>-reel/post.toml.
+   Für Quali und Rennen zusätzlich <session>-reel/post.toml. Qualifying: gab es das
+   Wochenende auf derselben Strecke im Vorjahr, kommt automatisch ein Ghost-Lap-Reel
+   „Pole dieses Jahr vs. Pole Vorjahr“ dazu (Daten werden geladen, Wetter geprüft).
    Existiert die Datei schon, bleibt sie unverändert (deine Titel bleiben).
 3. Alle Slides und Reels erzeugen – eine fehlerhafte Slide wird übersprungen
    und am Ende gemeldet, statt alles abzubrechen.
@@ -51,6 +53,25 @@ def driver_names(session_key: int) -> dict[str, str]:
     return {d.get("name_acronym"): d.get("last_name") for d in drivers if d.get("name_acronym")}
 
 
+def previous_quali(meeting: dict, refresh: bool = False) -> dict | None:
+    """Vorjahres-Qualifying auf derselben Strecke laden – oder None (mit Meldung)."""
+    from stintlab.compare import fetch_quali, previous_edition
+    prev = previous_edition(meeting, refresh)
+    if not prev:
+        print("  Vorjahresvergleich: kein Wochenende auf dieser Strecke im Vorjahr")
+        return None
+    try:
+        info = fetch_quali(prev["meeting_key"], refresh=refresh)
+    except Exception as exc:                       # Netz, fehlende Daten – Rest soll weiterlaufen
+        print(f"  ⚠ Vorjahresvergleich übersprungen: {exc}")
+        return None
+    info["year"] = prev.get("year") or str(prev.get("date_start", ""))[:4]
+    print(f"  Vorjahresvergleich: {prev.get('meeting_name')} {info['year']} · Pole {info['pole']} · {info['weather']}")
+    if info["rain"]:
+        print(f"  ⚠ Regen im Qualifying {info['year']} gemeldet – vor dem Posten Highlights prüfen")
+    return info
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("query", help="Ort/Land/Strecke/Name, meeting_key oder 'latest'")
@@ -80,7 +101,10 @@ def main() -> None:
         if long_run:
             print(f"  Long Runs: meiste Fahrer auf {long_run} → Slide nur mit dieser Mischung")
     configs = [(base / FOLDERS[args.session] / "post.toml", post_toml(meeting, args.session, facts, long_run))]
-    reels = reel_toml(meeting, args.session, facts)
+    compare = None
+    if args.session == "Q" and not args.no_reels and not (base / "quali-reel" / "post.toml").exists():
+        compare = previous_quali(meeting, args.refresh)
+    reels = reel_toml(meeting, args.session, facts, compare)
     if reels and not args.no_reels:
         configs.append((base / f"{FOLDERS[args.session]}-reel" / "post.toml", reels))
 

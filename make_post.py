@@ -17,6 +17,7 @@ from pathlib import Path
 from matplotlib import pyplot as plt
 
 from stintlab.analyses.results import pit_notes, result_mismatches
+from stintlab.openf1 import SESSION_NAMES, meeting_by_key
 from stintlab.quali import quali_mismatches
 from stintlab.registry import ANALYSES, REELS
 from stintlab.session import load_session, sign_mismatches
@@ -62,7 +63,11 @@ def build(config_file: Path, refresh: bool = False, keep_going: bool = False) ->
     # Jede benötigte Session genau einmal laden
     sessions = {}
     for stype in {item.get("session", session["type"]) for item in config["slides"] + reels}:
-        sessions[stype] = load_session(session["meeting_key"], stype, refresh=refresh)
+        if stype == "PREVIEW":           # Race Preview: mehrere Rennen + Wetter, keine einzelne Session
+            from stintlab.preview import build_preview
+            sessions[stype] = build_preview(session["meeting_key"], refresh=refresh)
+        else:
+            sessions[stype] = load_session(session["meeting_key"], stype, refresh=refresh)
 
     # Plausibilitätstest: Passt der gezeichnete Abstand zu den Positionsdaten?
     for slide in config["slides"]:
@@ -94,10 +99,19 @@ def build(config_file: Path, refresh: bool = False, keep_going: bool = False) ->
             print(f"⚠ Qualifying {stype}: {problem} – vor dem Posten prüfen!")
 
     out_dir = config_file.parent / "slides"
+    # Kopfzeile jeder Slide: „Baku · Qualifying · 2026“, rechts „02 / 05“
+    meeting = meeting_by_key(session["meeting_key"]) or {}
+    place = meeting.get("location") or meeting.get("circuit_short_name") or ""
+    year = str(meeting.get("date_start") or "")[:4]
+    names = {**SESSION_NAMES, "PREVIEW": "Race Preview"}
+    meta_for = lambda stype: " · ".join(x for x in (place, names.get(stype, stype), year) if x)
+    n_slides = len(config["slides"])
     for i, slide in enumerate(config["slides"], start=1):
         filename = f"{i:02d}_{slide['analysis']}.png"
         try:
-            fig, ax = new_slide(slide["title"], slide.get("subtitle", ""))
+            fig, ax = new_slide(slide["title"], slide.get("subtitle", ""),
+                                source=slide.get("source") or ANALYSES[slide["analysis"]].get("source", "Data: OpenF1"),
+                                meta=meta_for(slide.get("session", session["type"])), page=f"{i:02d} / {n_slides:02d}")
             ANALYSES[slide["analysis"]]["render"](ax, sessions[slide.get("session", session["type"])], slide)
             path = save_slide(fig, out_dir / filename)
             print(f"✓ {path}")

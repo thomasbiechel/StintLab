@@ -214,6 +214,7 @@ def prepare(data: dict, reel: dict) -> dict:
 
     from stintlab.reels.chase3d import Scene
     scene = Scene(data, rival, drv, ref=drv)     # Kamera hinter drv, Gegner vor ihm
+    scene.configure(reel)
     # Hauptfigur immer in Teamfarbe; bei Teamkollegen bekommt der GEGNER das Weiß
     teams = data.get("teams", {})
     scene.col[drv] = team_color(teams.get(drv))

@@ -3,19 +3,6 @@ meeting_key = 1295
 type = "Q"
 
 [[reels]]
-analysis  = "ghost_lap"
-part      = "Q3"
-hook      = "Where Russell found 0.8 s"
-result    = "Russell on pole by 0.837 s"
-replay_km = 4.0
-
-[[reels]]
-analysis = "ghost_lap"
-part     = "Q3"
-hook     = "Where Russell found 0.8 s"
-result   = "Russell on pole by 0.837 s"
-replay   = false
-[[reels]]
 # Pole 2026 gegen Pole 2025 (Daten vorher: python fetch_compare.py baku 2025 2026)
 # 2025: OpenF1 ohne Rundendaten → VER-Runde aus Positionen + offizieller Zeit rekonstruiert
 analysis    = "ghost_lap"
@@ -23,4 +10,4 @@ part        = "Q3"
 compare     = { meeting_key = 1269 }
 replay_km   = 5.2       # Ende der langen Geraden: RUS '26 verliert bei Vollgas Tempo
 replay_note = "RUS '26: full throttle – still losing speed"
-open_at     = 0         # 3D-Anfang am Start der Runde (Ghost halbtransparent, weil beide übereinander)
+open_at     = 45        # 3D-Anfang am Start der Runde (Ghost halbtransparent, weil beide übereinander)

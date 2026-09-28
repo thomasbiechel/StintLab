@@ -1,0 +1,26 @@
+# Race Preview Sepang 2026 – erzeugt von preview.py, Titel frei änderbar
+
+[session]
+meeting_key = 1308
+type = "PREVIEW"
+
+[[slides]]
+analysis = "preview_track"
+title = "Sepang is back after 9 years"
+subtitle = "Last race here in 2017"
+source = "Data: OpenF1 · Jolpica-F1"
+
+[[slides]]
+analysis = "preview_weather"
+title = "Sepang weekend forecast"
+subtitle = "Friday to Sunday at the circuit · local times"
+
+[[slides]]
+analysis = "preview_form"
+title = "Mercedes set the race pace"
+subtitle = "Team race pace in Monza, Madrid, Baku · newest race counts most"
+
+[[slides]]
+analysis = "preview_chances"
+title = "Who can win in Sepang?"
+subtitle = "Recent form only – 2017 is too long ago to count · an assessment, not a prediction"
