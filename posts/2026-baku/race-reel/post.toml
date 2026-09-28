@@ -1,0 +1,13 @@
+# Reel Baku-Rennen: Russells Vorsprung, das Safety Car und die Zielrunde
+[session]
+meeting_key = 1295
+type = "R"
+
+[[reels]]
+analysis = "race_story"
+drivers  = ["RUS", "VER"]
+skip     = [31]          # Boxenstopp-Ausreißer im Graphen
+track_lap = 1          # Standard: Runde vor dem ersten Safety Car (hier 30)
+# final_window = 52      # Sekunden vor dem Ziel in der Zielrunde, Standard: halbe Runde
+hook     = "Russell's 12-second lead – gone in one safety car"
+result   = "Russell holds on by 0.196 s"
