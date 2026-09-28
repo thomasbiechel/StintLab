@@ -1,0 +1,30 @@
+# Tiefe Rennanalyse Baku – Frage: Warum hat Verstappen Russell nie überholt?
+[session]
+meeting_key = 1295
+type = "R"
+
+[[slides]]
+analysis = "gap_between"
+drivers  = ["RUS", "VER"]
+laps     = [39, 50]       # Runde 51 weggelassen: Zeitstempel der Zielrunde ungenau
+title    = "WITHIN 0.7 S TO THE FLAG. WHY DID VERSTAPPEN NEVER PASS?"
+subtitle = "Gap Russell → Verstappen at the line after the restart · official finish: 0.196 s"
+
+[[slides]]
+analysis = "gap_on_lap"
+drivers  = ["RUS", "VER"]
+laps     = [40, 50]
+title    = "HE CLOSED IN ON THE STRAIGHT – AND DROPPED BACK IN THE CORNERS"
+subtitle = "Gap at every point of the lap, laps 40–50 · even right after the long straight he was still ~0.5 s back"
+
+[[slides]]
+analysis = "sector_delta"
+drivers  = ["RUS", "VER"]
+laps     = [40, 50]
+title    = "THE SAME TRADE EVERY SINGLE LAP"
+subtitle = "Laps 40–50 · S3 = the long straight · speed trap: VER 332–336, RUS 321–326 km/h"
+
+[[slides]]
+analysis = "tow_effect"
+title    = "WITHIN 1 S OF ANOTHER CAR: +11 KM/H FOR EVERYONE"
+subtitle = "Every driver, every green lap · Verstappen's +10 km/h over Russell fits this tow effect"

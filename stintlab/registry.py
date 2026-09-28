@@ -9,6 +9,7 @@ Eine neue Analyse = neue Funktion in stintlab/analyses/ + ein Eintrag hier.
 """
 
 from stintlab.analyses.gap_between import render_gap_between
+from stintlab.analyses.gap_on_lap import render_gap_on_lap
 from stintlab.analyses.ideal_lap import render_ideal_lap
 from stintlab.analyses.lap_times import render_lap_times
 from stintlab.analyses.long_runs import render_long_runs
@@ -17,11 +18,13 @@ from stintlab.analyses.positions import render_positions
 from stintlab.analyses.race_pace import render_driver_pace, render_team_pace
 from stintlab.analyses.results import render_results
 from stintlab.analyses.sectors import render_sectors
+from stintlab.analyses.sector_delta import render_sector_delta
 from stintlab.analyses.speed import render_speed_vs_sector, render_top_speed
 from stintlab.reels.gap_chase import render_gap_chase
 from stintlab.reels.race_story import render_race_story
 from stintlab.reels.ghost_lap import render_ghost_lap
 from stintlab.analyses.telemetry import render_telemetry
+from stintlab.analyses.tow_effect import render_tow_effect
 
 
 def _gap_between(ax, data, slide):
@@ -98,6 +101,24 @@ def _driver_pace(ax, data, slide):
     render_driver_pace(ax, data, _min_laps(slide), _laps_window(slide))
 
 
+def _two_drivers(slide, name):
+    drivers = slide.get("drivers", [])
+    if len(drivers) != 2:
+        raise ValueError(f"{name} braucht genau zwei Fahrer, z. B. drivers = [\"RUS\", \"VER\"]")
+    return drivers
+
+
+def _gap_on_lap(ax, data, slide):
+    laps = _laps_window(slide)
+    if not laps:
+        raise ValueError("gap_on_lap braucht laps = [erste, letzte], z. B. laps = [40, 50]")
+    render_gap_on_lap(ax, data, *_two_drivers(slide, "gap_on_lap"), laps)
+
+
+def _sector_delta(ax, data, slide):
+    render_sector_delta(ax, data, *_two_drivers(slide, "sector_delta"), _laps_window(slide))
+
+
 def _positions(ax, data, slide):
     render_positions(ax, data, slide.get("drivers") or None, _laps_window(slide))
 
@@ -129,6 +150,9 @@ ANALYSES = {
     "telemetry": {"render": _telemetry, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
     "driver_pace": {"render": _driver_pace, "sessions": {"R", "S"}},
     "positions": {"render": _positions, "sessions": {"R", "S"}},
+    "gap_on_lap": {"render": _gap_on_lap, "sessions": {"R", "S"}},
+    "tow_effect": {"render": lambda ax, data, slide: render_tow_effect(ax, data), "sessions": {"R", "S"}},
+    "sector_delta": {"render": _sector_delta, "sessions": {"R", "S", "FP1", "FP2", "FP3"}},
     "top_speed": {"render": _top_speed, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "speed_vs_sector": {"render": _speed_vs_sector, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "team_pace": {"render": _team_pace, "sessions": {"R", "S"}},
