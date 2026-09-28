@@ -220,3 +220,44 @@ def draw_scene(ax, scene: Scene, t: float) -> float:
     for i, (_, p, fw, d) in enumerate(cars):
         draw_car(ax, cam, p, fw, scene.col[d], d, 7 + 2 * i)
     return g
+
+
+class MiniMap:
+    """Kontext für den 3D-Anfang: kleine Streckenkarte oben links mit Ziellinie,
+    beiden Autos und einer Zeile „KM 1.2 / 5.8 · SECTOR 1“. Ohne sie weiß im
+    Feed niemand, wo auf der Runde die Szene spielt."""
+
+    def __init__(self, fig, scene: Scene, box=(0.05, 0.60, 0.26, 0.19), sector_fracs: list[float] | None = None):
+        self.scene = scene
+        self.ax = fig.add_axes(list(box))
+        self.ax.set_aspect("equal")
+        self.ax.axis("off")
+        P = scene.P
+        self.ax.plot(P[:, 0], P[:, 1], color=COLORS["grid"], linewidth=5, solid_capstyle="round", zorder=1)
+        self.ax.plot(P[:, 0], P[:, 1], color="#3a3a44", linewidth=2.5, solid_capstyle="round", zorder=2)
+        self.ax.scatter([P[0, 0]], [P[0, 1]], s=26, marker="s", color="white", zorder=3)
+        self.dots = {d: self.ax.scatter([], [], s=42, color=scene.col[d], edgecolor="white", linewidth=1.0, zorder=5)
+                     for d in (scene.a, scene.b)}
+        self.cum = np.concatenate([[0.0], np.cumsum(np.hypot(np.diff(P[:, 0]), np.diff(P[:, 1])))])
+        self.sector_fracs = sector_fracs or []
+        self.label = fig.text(box[0] + box[2] / 2, box[1] - 0.012, "", ha="center", va="top", fontsize=10,
+                              fontweight="bold", color=COLORS["muted"])
+
+    def lap_position(self, point) -> float:
+        """Anteil der Runde (0–1) am nächstgelegenen Punkt der Referenzrunde."""
+        i = int(np.argmin(np.hypot(self.scene.P[:, 0] - point[0], self.scene.P[:, 1] - point[1])))
+        return float(self.cum[i] / self.cum[-1])
+
+    def update(self, t: float) -> None:
+        for d, dot in self.dots.items():
+            p, _ = self.scene.pos(d, t)
+            dot.set_offsets([[p[0], p[1]]])
+        pa, _ = self.scene.pos(self.scene.a, t)
+        f = self.lap_position(pa)
+        sector = 1 + sum(f >= s for s in self.sector_fracs) if self.sector_fracs else None
+        text = f"KM {f * self.cum[-1] / 1000:.1f} / {self.cum[-1] / 1000:.1f}"
+        self.label.set_text(text + (f"  ·  SECTOR {sector}" if sector else ""))
+
+    def set_visible(self, on: bool) -> None:
+        self.ax.set_visible(on)
+        self.label.set_visible(on)

@@ -27,9 +27,9 @@ from matplotlib import pyplot as plt
 
 from stintlab.analyses.gap_between import line_gaps
 from stintlab.analyses.results import race_rows
-from stintlab.race_control import restricted_laps
+from stintlab.race_control import neutral_phases, restricted_laps
 from stintlab.reels.ghost_lap import _ffmpeg
-from stintlab.style import COLORS, resolve_font, team_color
+from stintlab.style import COLORS, NEUTRAL_STYLE, neutral_legend, resolve_font, team_color
 
 WIDTH_PX, HEIGHT_PX, DPI, FPS = 1080, 1920, 150, 60
 HOOK_S, RACE_S, RESULT_S, LOGO_S = 2.0, 12.0, 2.5, 1.0
@@ -135,10 +135,12 @@ def render_gap_chase(data: dict, reel: dict, path: Path) -> Path:
     ax.set_xlabel("Lap", color=COLORS["muted"], fontsize=11)
     ax.set_ylabel(f"{b} behind {a} (s)", color=COLORS["muted"], fontsize=11)
 
-    for lo, hi in neutral_blocks(data.get("race_control", []), int(x[0]), int(x[-1])):
-        ax.axvspan(lo - 0.5, hi + 0.5, color="#f5c518", alpha=0.10, zorder=0)
-        ax.text((lo + hi) / 2, ymax * 0.97, "SC", ha="center", va="top", fontsize=9,
-                color="#f5c518", fontweight="bold")
+    phases = neutral_phases(data.get("race_control", []), int(x[0]), int(x[-1]))
+    for lo, hi, kind in phases:
+        color, _, short, _ = NEUTRAL_STYLE[kind]
+        ax.axvspan(lo - 0.5, hi + 0.5, color=color, alpha=0.18 if kind == "RED" else 0.10, zorder=0)
+        ax.text((lo + hi) / 2, ymax * 0.97, short, ha="center", va="top", fontsize=9,
+                color=color, fontweight="bold")
     for p in data.get("pit_stops", []):
         if p.get("lap") and x[0] <= p["lap"] <= x[-1] and p["driver"] in (a, b):
             ax.axvline(p["lap"], color=ca if p["driver"] == a else cb, linewidth=0.8,
@@ -157,7 +159,7 @@ def render_gap_chase(data: dict, reel: dict, path: Path) -> Path:
                           color=COLORS["accent"])
     txt_center_sub = fig.text(0.5, 0.52, "", ha="center", va="center", fontsize=18, color=COLORS["muted"])
     fig.text(0.94, 0.965, "STINTLAB", ha="right", va="center", fontsize=11, fontweight="bold", color=COLORS["accent"])
-    fig.text(0.06, 0.225, "Data: OpenF1 · gap at the finish line each lap · yellow = SC/VSC · dotted = pit stop",
+    fig.text(0.06, 0.225, f"Data: OpenF1 · gap at the finish line each lap · {neutral_legend(k for *_, k in phases)} · dotted = pit stop",
              ha="left", va="top", fontsize=7.5, color=COLORS["muted"])
 
     def show_race(on: bool) -> None:

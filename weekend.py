@@ -30,7 +30,7 @@ from pathlib import Path
 
 from stintlab import openf1
 from stintlab.session import load_session
-from stintlab.templates import FOLDERS, headline_facts, post_toml, reel_toml
+from stintlab.templates import FOLDERS, headline_facts, long_run_compound, post_toml, reel_toml
 
 REPO = Path(__file__).resolve().parent
 
@@ -73,7 +73,13 @@ def main() -> None:
         print("  ⚠ Noch kein offizielles Ergebnis – Titel bitte selbst setzen")
 
     base = REPO / "posts" / f"{args.year}-{slug(meeting)}"
-    configs = [(base / FOLDERS[args.session] / "post.toml", post_toml(meeting, args.session, facts))]
+    long_run = None
+    if args.session.startswith("FP"):
+        from stintlab.analyses.long_runs import find_long_runs
+        long_run = long_run_compound(find_long_runs(data))
+        if long_run:
+            print(f"  Long Runs: meiste Fahrer auf {long_run} → Slide nur mit dieser Mischung")
+    configs = [(base / FOLDERS[args.session] / "post.toml", post_toml(meeting, args.session, facts, long_run))]
     reels = reel_toml(meeting, args.session, facts)
     if reels and not args.no_reels:
         configs.append((base / f"{FOLDERS[args.session]}-reel" / "post.toml", reels))

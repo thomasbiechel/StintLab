@@ -1,0 +1,26 @@
+# Italian Grand Prix 2026 · Monza · race – angelegt von weekend.py
+# Titel mit TODO selbst formulieren, dann: python weekend.py <ort> R
+[session]
+meeting_key = 1293
+type = "R"
+
+[[slides]]
+analysis = "results"
+title    = "ANTONELLI WINS BY 3.857 S"
+subtitle = "Official race classification · +/– = places vs. starting grid"
+
+[[slides]]
+analysis = "driver_pace"
+title    = "TITLE TODO"   # TODO
+subtitle = "Clean race laps only · strategy and traffic affect the numbers"
+
+[[slides]]
+analysis = "team_pace"
+title    = "TITLE TODO"   # TODO
+subtitle = "Median of both drivers' clean race laps"
+
+[[slides]]
+analysis = "gap_between"
+drivers  = ["RUS", "ANT"]
+title    = "TITLE TODO"
+subtitle = "SUBTITLE TODO"

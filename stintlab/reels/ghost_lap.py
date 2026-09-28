@@ -37,6 +37,7 @@ SICHERE ZONE: Instagram legt unten Caption/Buttons und rechts die Like-Leiste
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 
 import matplotlib
@@ -51,6 +52,7 @@ from stintlab.analyses.ideal_lap import _valid_laps
 from stintlab.analyses.long_runs import _fmt
 from stintlab.analyses.telemetry import _driver_trace, compare, fastest_lap
 from stintlab.session import _parse
+from stintlab.trackpos import retime
 from stintlab.style import COLORS, resolve_font, team_color
 
 WIDTH_PX, HEIGHT_PX, DPI, FPS = 1080, 1920, 150, 60
@@ -80,7 +82,7 @@ def lap_positions(location: list[dict], lap: dict) -> tuple[np.ndarray, np.ndarr
     if len(clean) < 10:
         raise ValueError(f"{lap['Driver']}: zu wenige Positionsdaten für Runde {lap['LapNumber']}")
     arr = np.array(clean)
-    return arr[:, 0], arr[:, 1], arr[:, 2]
+    return retime(arr[:, 0], arr[:, 1], arr[:, 2])   # gegen „Jojo“ und Hänger, siehe stintlab.trackpos
 
 
 def orient(x: np.ndarray, y: np.ndarray, rotate: bool) -> tuple[np.ndarray, np.ndarray]:
@@ -127,25 +129,64 @@ def pick_drivers(data: dict, drivers: list[str] | None, part: str | None,
     return list(drivers), laps
 
 
+def pace_positions(t: np.ndarray, x: np.ndarray, y: np.ndarray, trace: dict,
+                   lap_time: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Position über die Zeit aus TEMPO + BAHN statt aus den Zeitstempeln.
+
+    Die Positionsdaten liefern die Form der Bahn (wo liegt die Strecke), das
+    Tempo aus car_data liefert, wann das Auto wo ist: Anteil der Runde laut
+    Tempo → Punkt auf der Bahn. Monza 2026 Q3: Gaslys Position hängt ~1,4 s
+    und holt die ~60 m nie auf; das Tempo ist dort repariert (frozen_runs) und
+    an den offiziellen Sektorzeiten ausgerichtet. Außerhalb der Runde (Rand
+    für den Schweif) bleiben die geglätteten Rohdaten.
+    """
+    inside = (t >= 0) & (t <= lap_time)
+    if inside.sum() < 10 or "frac" not in trace:
+        return t, x, y
+    xi, yi = x[inside], y[inside]
+    s = np.concatenate([[0.0], np.cumsum(np.hypot(np.diff(xi), np.diff(yi)))])
+    keep = np.concatenate([[True], np.diff(s) > 0])        # hängende Punkte = gleiche Stelle
+    s, xi, yi = s[keep], xi[keep], yi[keep]
+    f = s / s[-1]
+    tt, ff = trace["t"], trace["frac"]
+    before, after = t < 0, t > lap_time
+    return (np.concatenate([t[before], tt, t[after]]),
+            np.concatenate([x[before], np.interp(ff, f, xi), x[after]]),
+            np.concatenate([y[before], np.interp(ff, f, yi), y[after]]))
+
+
+def _clean_location(loc: list[dict], lap: dict, t: np.ndarray, x: np.ndarray, y: np.ndarray) -> list[dict]:
+    """Aufbereitete Positionen wieder als /location-Liste (für den 3D-Anfang),
+    Höhe z aus den Rohdaten zur selben Zeit."""
+    raw = sorted(((_parse(p["date"]) - lap["LapStart"]).total_seconds(), float(p.get("z") or 0.0))
+                 for p in loc if p.get("date"))
+    rt, rz = np.array([r[0] for r in raw]), np.array([r[1] for r in raw])
+    z = np.interp(t, rt, rz)
+    return [{"date": (lap["LapStart"] + timedelta(seconds=float(ti))).isoformat(), "x": float(xi), "y": float(yi),
+             "z": float(zi)} for ti, xi, yi, zi in zip(t, x, y, z)]
+
+
 def prepare(data: dict, drivers: list[str] | None = None, part: str | None = None) -> dict:
     """Alles, was das Video braucht – ohne Zeichnen, damit testbar."""
     drivers, laps = pick_drivers(data, drivers, part)
     traces = [_driver_trace(data, d, l) for d, l in zip(drivers, laps)]
     res = compare(*traces)
 
-    pos = []
-    for d, lap in zip(drivers, laps):
+    pos, clean_loc = [], {}
+    for d, lap, tr in zip(drivers, laps, traces):
         loc = data.get("location", {}).get(d)
         if loc is None:
             loc = openf1.cached_fetch_driver("location", data["session_key"], data["numbers"][d])
-        pos.append(lap_positions(loc, lap))
+        t, x, y = pace_positions(*lap_positions(loc, lap), tr, float(lap["LapTime"]))
+        pos.append((t, x, y))
+        clean_loc[d] = _clean_location(loc, lap, t, x, y)
     rotate = needs_rotation(pos[0][1], pos[0][2])
     pos = [(t, *orient(x, y, rotate)) for t, x, y in pos]
 
     a, b = traces
     return {"drivers": drivers, "laps": laps, "traces": traces, "res": res, "pos": pos,
             "a_frac": (a["t"], a["frac"]), "gap": b["lap_time"] - a["lap_time"],
-            "teams": [data.get("teams", {}).get(d) for d in drivers]}
+            "teams": [data.get("teams", {}).get(d) for d in drivers], "clean_location": clean_loc}
 
 
 def gap_at(prep: dict, t: float) -> float:
@@ -161,7 +202,14 @@ def replay_start(prep: dict, lap_time: float, window: float = REPLAY_WINDOW_S) -
     ts = np.arange(0.0, max(lap_time - window, 0.0) + 1e-9, 0.1)
     gaps = np.array([gap_at(prep, t) for t in np.arange(0.0, lap_time + 1e-9, 0.1)])
     shift = int(round(window / 0.1))
-    change = [abs(gaps[min(i + shift, len(gaps) - 1)] - gaps[i]) for i in range(len(ts))]
+    change = np.array([abs(gaps[min(i + shift, len(gaps) - 1)] - gaps[i]) for i in range(len(ts))])
+    # Fenster mit eingefrorenen Messwerten meiden: dort ist der Verlauf nur
+    # interpoliert – und ändert sich scheinbar am stärksten (Monza 2026 Q3, Gasly:
+    # Anfang und Zeitlupe landeten genau in der Lücke, Russell „überholte“)
+    blocked = [(t0 - 1.0, t1 + 1.0) for tr in prep.get("traces", []) for t0, t1 in tr.get("frozen", [])]
+    ok = np.array([not any(a0 < t + window and t < a1 for a0, a1 in blocked) for t in ts], dtype=bool)
+    if len(ts) and ok.any():
+        change = np.where(ok, change, -1.0)
     return float(ts[int(np.argmax(change))]) if len(ts) else 0.0
 
 
@@ -258,7 +306,9 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
     rep_to = min(rep_from + REPLAY_WINDOW_S, lap_a) if with_replay else None
     open_from = open_from_config(reel, rep_from, prep, lap_a)
     from stintlab.reels.chase3d import Scene, draw_scene
-    scene = Scene(data, drv_a, drv_b, t0s={d: lap["LapStart"] for d, lap in zip(prep["drivers"], prep["laps"])})
+    # 3D mit denselben aufbereiteten Positionen wie die Karte (kein Hänger, kein Jojo)
+    scene = Scene({**data, "location": {**data.get("location", {}), **prep["clean_location"]}}, drv_a, drv_b,
+                  t0s={d: lap["LapStart"] for d, lap in zip(prep["drivers"], prep["laps"])})
 
     plt.rcParams["font.family"] = "sans-serif"
     plt.rcParams["font.sans-serif"] = [resolve_font()]
@@ -292,7 +342,14 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
     zoom_box, = ax_mini.plot([], [], color=COLORS["accent"], linewidth=1.2, zorder=6)
 
     # ── Abstandsgraph ────────────────────────────────────────────────────────
-    res = prep["res"]
+    res = dict(prep["res"])
+    # Eingefrorene Messwerte: dort keinen erfundenen Abstand zeigen (Linie unterbrochen, Zahl „–“)
+    holes = []
+    for tr in prep["traces"]:
+        for t0, t1 in tr.get("frozen", []):
+            holes.append(tuple(float(np.interp(x, tr["t"], tr["frac"])) for x in (t0, t1)))
+    in_hole = lambda f: any(f0 < f < f1 for f0, f1 in holes)
+    res["delta"] = np.array([np.nan if in_hole(f) else d for f, d in zip(res["frac"], res["delta"])])
     km = res["frac"] * res["length_m"] / 1000
     ax_gap = fig.add_axes([0.10, 0.23, 0.80, 0.10])
     ax_gap.set_facecolor(COLORS["plot"])
@@ -300,7 +357,7 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
         side.set_visible(False)
     ax_gap.tick_params(colors=COLORS["muted"], labelsize=8)
     ax_gap.axhline(0, color=COLORS["muted"], linewidth=0.8)
-    lim = max(abs(res["delta"]).max() * 1.2, 0.05)
+    lim = max(np.nanmax(np.abs(res["delta"])) * 1.2, 0.05)
     ax_gap.set_xlim(0, km[-1])
     ax_gap.set_ylim(-lim, lim)
     ax_gap.set_xticks([])
@@ -323,8 +380,10 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
                          ha="center", va="center", fontsize=14, fontweight="bold", color=COLORS["muted"])]
     open_gap = fig.text(0.5, 0.11, "", ha="center", va="center", fontsize=44, fontweight="bold",
                         color=COLORS["text"])
-    open_txt += [open_gap, fig.text(0.5, 0.07, f"{drv_b} behind {drv_a} · same lap time", ha="center",
-                                    va="center", fontsize=14, color=COLORS["muted"])]
+    open_sub = fig.text(0.5, 0.07, "", ha="center", va="center", fontsize=14, color=COLORS["muted"])
+    open_txt += [open_gap, open_sub]
+    from stintlab.reels.chase3d import MiniMap
+    minimap = MiniMap(fig, scene, sector_fracs=prep["res"].get("sector_marks"))
 
     # ── Texte ────────────────────────────────────────────────────────────────
     txt_big = fig.text(0.5, 0.88, "", ha="center", va="center", fontsize=40, fontweight="bold")
@@ -345,6 +404,7 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
     def visible(*shown) -> None:
         for art in (ax_map, ax_zoom, ax_mini, ax_gap, ax_3d, *open_txt, txt_leg_a, txt_leg_b, txt_tag):
             art.set_visible(art in shown)
+        minimap.set_visible(ax_3d in shown)
         txt_data.set_visible(ax_3d not in shown)   # über der 3D-Strecke würde die Zeile stören
 
     def place(key: str, t: float) -> list:
@@ -371,6 +431,10 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
                                          color=cb, alpha=0.35, linewidth=0)]
 
     def running_gap(t: float) -> None:
+        if in_hole(frac_of(t)):
+            txt_big.set_text("–")
+            txt_sub.set_text("no data here")
+            return
         g = gap_at(prep, t)
         txt_big.set_text(f"{abs(g):.2f} s")
         txt_big.set_fontsize(40)
@@ -385,8 +449,13 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
             txt_big.set_text("")
             txt_sub.set_text("")
             draw_scene(ax_3d, scene, t)
+            minimap.update(t)
             g = gap_at(prep, t)      # Abstand aus der Telemetrie, wie im Rest des Reels
             open_gap.set_text(f"{abs(g):.2f} s")
+            # Wer vorne liegt, wechselt in der Runde – der Text muss mitgehen
+            ahead, behind = (drv_a, drv_b) if g >= 0 else (drv_b, drv_a)
+            open_gap.set_color(ca if g >= 0 else cb)
+            open_sub.set_text(f"{behind} behind {ahead} · same lap time")
             return
         if phase == "lap":
             visible(ax_map, ax_gap, txt_leg_a, txt_leg_b)

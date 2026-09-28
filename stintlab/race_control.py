@@ -18,18 +18,47 @@ from __future__ import annotations
 import re
 
 
+_RED_FLAG = re.compile(r"\bRED FLAG\b")
+
+
+_PRIORITY = {"VSC": 0, "SC": 1, "RED": 2}
+
+
 def restricted_laps(race_control: list[dict]) -> set[int]:
-    """Rundennummern unter SC, VSC oder roter Flagge.
+    """Rundennummern unter SC, VSC oder roter Flagge (Art egal, siehe neutral_laps)."""
+    return set(neutral_laps(race_control))
+
+
+def neutral_laps(race_control: list[dict]) -> dict[int, str]:
+    """{Runde: "SC" | "VSC" | "RED"} aller neutralisierten Runden.
 
     Abweichung vom Original im Analyser: Es wird gemerkt, WELCHE Art von
     Unterbrechung läuft. Ein SC/VSC endet nur durch seine eigene Ende-Meldung.
     Grüne/Clear-Flaggen beenden nur eine rote Flagge – und auch nur, wenn sie
     für die ganze Strecke gelten, nicht für einen einzelnen Sektor. Sonst würde
     "CLEAR IN TRACK SECTOR 7" mitten in einer SC-Phase diese vorzeitig beenden.
+
+    ROTE FLAGGE (Monza 2026, Runde 3): Die Meldung kommt als Kategorie "Other"
+    ("RED FLAG - RACE SUSPENDED", dazu SessionStatus "SESSION ABORTED"), nicht
+    als Flag – und direkt davor "SAFETY CAR DEPLOYED". Ohne Sonderbehandlung
+    blieb das SC bis Runde 29 "offen" (erst ein VSC-Ende schloss es), und das
+    halbe Rennen galt als neutralisiert. Deshalb:
+    - rote Flagge auch am Text / SESSION ABORTED erkennen, sie ersetzt ein SC
+      (Runden des SC vor der roten Flagge bleiben SC, ab ihr zählt RED)
+    - sie endet mit "SESSION STARTED" oder einer Flagge für die ganze Strecke
+    - Formationsrunden und die Runde mit dem stehenden Start zählen dazu
+      (wie Runde 1 beim normalen Start – keine Rennpace), als RED
+    Fällt eine Runde unter mehrere Arten, gewinnt RED vor SC vor VSC.
     """
-    restricted: set[int] = set()
-    active_kind: str | None = None   # None, "SC" (gilt auch für VSC) oder "RED"
+    kinds: dict[int, str] = {}
+    restart_laps: set[int] = set()
+    active_kind: str | None = None   # None, "SC", "VSC" oder "RED"
     start_lap: int | None = None
+
+    def mark(lo: int, hi: int, kind: str) -> None:
+        for n in range(lo, hi + 1):
+            if n not in kinds or _PRIORITY[kind] >= _PRIORITY[kinds[n]]:
+                kinds[n] = kind
 
     for msg in race_control:
         lap = msg.get("lap")
@@ -39,28 +68,61 @@ def restricted_laps(race_control: list[dict]) -> set[int]:
         flag = (msg.get("flag") or "").strip().upper()
         text = (msg.get("message") or "").upper()
 
+        # \b: "CHEQUERED FLAG" enthält sonst "RED FLAG" -> Zielflagge galt als rot
+        is_red = (category == "Flag" and flag == "RED") or bool(_RED_FLAG.search(text)) or \
+            (category == "SessionStatus" and "ABORTED" in text)
+        if is_red and active_kind != "RED":
+            # rote Flagge ersetzt ein laufendes SC/VSC
+            if active_kind is not None and start_lap is not None and lap > start_lap:
+                mark(start_lap, lap - 1, active_kind)
+            active_kind, start_lap = "RED", lap
+            continue
+        if "FORMATION LAP" in text or "STANDING START" in text:
+            restart_laps.update({lap, lap + 1})   # Formationsrunde + Runde mit dem Start
         if active_kind is None:
             if category == "SafetyCar" and "DEPLOYED" in text:
-                active_kind, start_lap = "SC", lap
-            elif category == "Flag" and flag == "RED":
-                active_kind, start_lap = "RED", lap
+                virtual = "VIRTUAL" in text or bool(re.search(r"\bVSC\b", text))
+                active_kind, start_lap = ("VSC" if virtual else "SC"), lap
             continue
 
-        sc_ends = (active_kind == "SC" and category == "SafetyCar"
+        sc_ends = (active_kind in ("SC", "VSC") and category == "SafetyCar"
                    and ("IN THIS LAP" in text or "ENDING" in text))
-        red_ends = (active_kind == "RED" and category == "Flag"
-                    and flag in ("GREEN", "CLEAR") and "SECTOR" not in text)
+        red_ends = active_kind == "RED" and (
+            (category == "Flag" and flag in ("GREEN", "CLEAR") and "SECTOR" not in text)
+            or (category == "SessionStatus" and "STARTED" in text))
 
         if sc_ends or red_ends:
-            restricted.update(range(start_lap, lap + 1))
+            mark(start_lap, lap, active_kind)
             active_kind, start_lap = None, None
 
     # Phase ohne Ende-Meldung (z. B. Rennende unter Neutralisation)
     if active_kind is not None and start_lap is not None:
         last_lap = max((m.get("lap") or start_lap) for m in race_control)
-        restricted.update(range(start_lap, last_lap + 1))
+        mark(start_lap, last_lap, active_kind)
 
-    return restricted
+    # Neustart nach roter Flagge: Formationsrunden + stehender Start. Beim ersten
+    # Start des Rennens (Runde 1) nicht nötig – Runde 1 fällt ohnehin überall raus.
+    if kinds:
+        for n in sorted(restart_laps):
+            if n > 1:
+                mark(n, n, "RED")
+    return kinds
+
+
+def neutral_phases(race_control: list[dict], first: int | None = None,
+                   last: int | None = None) -> list[tuple[int, int, str]]:
+    """Zusammenhängende Phasen gleicher Art als [(von, bis, Art)], optional
+    auf den Rundenbereich first..last beschränkt."""
+    phases: list[tuple[int, int, str]] = []
+    for n, kind in sorted(neutral_laps(race_control).items()):
+        if (first is not None and n < first) or (last is not None and n > last):
+            continue
+        if phases and n == phases[-1][1] + 1 and kind == phases[-1][2]:
+            phases[-1] = (phases[-1][0], n, kind)
+        else:
+            phases.append((n, n, kind))
+    return phases
+
 
 # Zwei Formate kommen vor (echte Meldungen aus Baku FP2):
 #   "CAR 44 (HAM) TIME 2:10.489 DELETED - TRACK LIMITS AT TURN 1 LAP 6 16:12:28"

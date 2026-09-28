@@ -46,10 +46,12 @@ from matplotlib.colors import to_rgba
 
 from stintlab import openf1
 from stintlab.analyses.telemetry import distance, lap_trace
+from stintlab.race_control import neutral_phases
 from stintlab.reels.gap_chase import gap_series, neutral_blocks, pick_pair
 from stintlab.reels.ghost_lap import _ffmpeg, needs_rotation
 from stintlab.session import _parse
-from stintlab.style import COLORS, resolve_font, team_color
+from stintlab.trackpos import retime
+from stintlab.style import COLORS, NEUTRAL_STYLE, neutral_legend, resolve_font, team_color
 
 WIDTH_PX, HEIGHT_PX, DPI, FPS = 1080, 1920, 150, 60
 OPEN_S, MAP_S, CHART_S, CHART_ZOOM_S, FINAL_S, RESULT_S = 3.5, 3.5, 4.0, 2.0, 6.0, 1.5
@@ -87,7 +89,8 @@ class Track:
         if len(pts) < 10:
             raise ValueError("zu wenige Positionsdaten")
         arr = np.array(pts)
-        self.t, x, y = arr[:, 0], arr[:, 1], arr[:, 2]
+        # Zeitstempel glätten, hängende Punkte raus (siehe stintlab.trackpos) – sonst „Jojo“
+        self.t, x, y = retime(arr[:, 0], arr[:, 1], arr[:, 2])
         self.rotate = needs_rotation(x, y) if rotate is None else rotate
         self.x, self.y = (y, -x) if self.rotate else (x, y)
         self.mx, self.my = np.gradient(self.x, self.t), np.gradient(self.y, self.t)
@@ -245,7 +248,8 @@ def prepare(data: dict, reel: dict) -> dict:
         t_open = pick_open_start(ta, tb, last_start, t_finish, max_dist)
     open_times = t_open + np.arange(int(OPEN_S * FPS)) / FPS
 
-    return {"a": a, "b": b, "x": x, "y": y, "blocks": blocks, "peak": peak, "scene": scene,
+    phases = neutral_phases(data.get("race_control", []), int(x[0]), int(x[-1]))
+    return {"a": a, "b": b, "x": x, "y": y, "blocks": blocks, "phases": phases, "peak": peak, "scene": scene,
             "open_times": open_times,
             "final": float(y[-1]), "track_lap": track_lap, "ta": ta, "tb": tb,
             "win": win, "ref_win": ref_win, "final_win": final_win, "t_finish": t_finish, "finish": finish,
@@ -366,7 +370,10 @@ def render_race_story(data: dict, reel: dict, path: Path) -> Path:
     if ca == cb:
         cb = COLORS["text"]
     final, peak = prep["final"], prep["peak"]
-    hook = reel.get("hook") or f"{a}'s lead – and what the safety car did to it"
+    phases = prep["phases"]
+    first_kind = phases[0][2] if phases else "SC"
+    first_name = {"SC": "safety car", "VSC": "virtual safety car", "RED": "red flag"}[first_kind]
+    hook = reel.get("hook") or f"{a}'s lead – and what the {first_name} did to it"
     result = reel.get("result") or f"{a} holds on by {final:.3f} s"
     blocks = prep["blocks"]
 
@@ -457,8 +464,9 @@ def render_race_story(data: dict, reel: dict, path: Path) -> Path:
     ax_chart.axhline(0, color=COLORS["muted"], linewidth=1)
     ax_chart.set_xlabel("Lap", color=COLORS["muted"], fontsize=11)
     ax_chart.set_ylabel(f"{b} behind {a} (s)", color=COLORS["muted"], fontsize=11)
-    for lo, hi in blocks:
-        ax_chart.axvspan(lo - 0.5, hi + 0.5, color=SC_YELLOW, alpha=0.12, zorder=0)
+    for lo, hi, kind in phases:
+        ax_chart.axvspan(lo - 0.5, hi + 0.5, color=NEUTRAL_STYLE[kind][0],
+                         alpha=0.20 if kind == "RED" else 0.12, zorder=0)
     line, = ax_chart.plot([], [], color=cb, linewidth=2.6, zorder=4)
     head = ax_chart.scatter([], [], s=90, color=cb, edgecolor="white", linewidth=1.2, zorder=5)
     fill = [None]
@@ -479,6 +487,8 @@ def render_race_story(data: dict, reel: dict, path: Path) -> Path:
     open_txt += [open_gap, fig.text(0.5, 0.07, f"{b} behind {a}", ha="center", va="center", fontsize=14,
                                     color=COLORS["muted"])]
     open_hist: list[float] = []
+    from stintlab.reels.chase3d import MiniMap
+    minimap = MiniMap(fig, prep["scene"])
 
     # ── Texte ────────────────────────────────────────────────────────────────
     txt_big = fig.text(0.5, 0.885, "", ha="center", va="center", fontsize=44, fontweight="bold")
@@ -503,6 +513,7 @@ def render_race_story(data: dict, reel: dict, path: Path) -> Path:
     def visible(*shown) -> None:
         for art in (ax_map, ax_zoom, ax_mini, ax_chart, ax_3d, *open_txt, *txt_legend, txt_tag):
             art.set_visible(art in shown)
+        minimap.set_visible(ax_3d in shown)
         txt_banner.set_visible(False)
         flash.set_alpha(0.0)
 
@@ -540,7 +551,7 @@ def render_race_story(data: dict, reel: dict, path: Path) -> Path:
             gap_band.set_segments([])
             gap_label.set_text("")
         headline(g, f"{b} behind {a}")
-        txt_tag.set_text(f"LAP {prep['track_lap']}" + (" · BEFORE THE SAFETY CAR" if blocks and
+        txt_tag.set_text(f"LAP {prep['track_lap']}" + (f" · BEFORE THE {NEUTRAL_STYLE[first_kind][1]}" if blocks and
                                                          prep["track_lap"] < blocks[0][0] else ""))
         txt_foot.set_text("Data: OpenF1 positions · both cars at the same moment · highlighted = gap on track")
 
@@ -558,13 +569,18 @@ def render_race_story(data: dict, reel: dict, path: Path) -> Path:
         ax_chart.set_ylim(*lerp(full_y, zoom_y))
         g = float(ys[-1])
         headline(g, f"Lap {int(round(pos))} / {int(x[-1])}  ·  {b} {'behind' if g >= 0 else 'ahead'}")
-        for lo, hi in blocks:
+        for lo, hi, kind in phases:
             if lo - 0.5 <= pos <= hi + 0.5:
-                txt_banner.set_text("SAFETY CAR")
+                color, name, _, fg = NEUTRAL_STYLE[kind]
+                txt_banner.set_text(name)
+                txt_banner.set_color(fg)
+                txt_banner.get_bbox_patch().set_facecolor(color)
                 txt_banner.set_visible(True)
-                # kurzer gelber Blitz beim Einsatz
+                # kurzer Blitz in der Farbe der Flagge beim Einsatz
+                flash.set_color(color)
                 flash.set_alpha(max(0.0, 0.35 * (1 - (pos - (lo - 0.5)) / 1.2)))
-        txt_foot.set_text("Data: OpenF1 · gap at the finish line each lap · yellow = SC/VSC")
+        txt_foot.set_text("Data: OpenF1 · gap at the finish line each lap · "
+                          + neutral_legend(k for *_, k in phases))
 
     def draw_final(i: int, is_result: bool) -> None:
         visible(ax_zoom, ax_mini, *txt_legend, txt_tag)
@@ -605,6 +621,7 @@ def render_race_story(data: dict, reel: dict, path: Path) -> Path:
             txt_foot.set_text("")
             from stintlab.reels.chase3d import draw_scene
             g = draw_scene(ax_3d, prep["scene"], prep["open_times"][v])
+            minimap.update(prep["open_times"][v])
             if np.isfinite(g):
                 open_hist.append(g)
             recent = open_hist[-9:]      # geglättet, sonst flackern die Hundertstel

@@ -82,3 +82,16 @@ def test_open_phase_comes_first_and_runs_in_real_time():
     opening = [t for phase, t in frames if phase == "open"]
     assert frames[0][0] == "open" and len(opening) == int(OPEN_S * FPS)
     assert opening[0] == 59.5 and abs((opening[-1] - opening[0]) - (OPEN_S - 1 / FPS)) < 1e-9
+
+
+def test_replay_window_avoids_frozen_data():
+    from stintlab.reels.ghost_lap import replay_start
+    # Abstand ändert sich am stärksten bei 30–34 s – aber dort sind die Daten eingefroren
+    at = np.linspace(0, 100, 1001)
+    frac = at / 100
+    prep = {"a_frac": (at, frac),
+            "res": {"frac": frac, "delta": np.interp(frac, [0, 0.3, 0.34, 0.6, 0.64, 1], [0, 0, 0.5, 0.5, 0.7, 0.7])},
+            "traces": [{"frozen": [(30.0, 34.0)]}, {"frozen": []}]}
+    start = replay_start(prep, 100.0)
+    assert not (26.0 < start < 35.0)
+    assert 56.0 <= start <= 64.0

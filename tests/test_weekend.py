@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import tomllib
 
 from stintlab.openf1 import match_meetings
-from stintlab.templates import headline_facts, post_toml, reel_toml
+from stintlab.templates import headline_facts, long_run_compound, post_toml, reel_toml
 from weekend import slug
 
 NOW = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)
@@ -62,3 +62,23 @@ def test_templates_are_valid_toml_with_suggested_titles():
 def test_slug_uses_the_location():
     assert slug(MEETINGS[2]) == "sepang"
     assert slug({"location": "São Paulo"}) == "sao-paulo"
+
+
+def test_long_run_slide_uses_the_most_common_compound():
+    runs = [{"driver": d, "compound": c} for d, c in
+            (("ANT", "HARD"), ("RUS", "HARD"), ("LEC", "SOFT"), ("HAM", "SOFT"), ("SAI", "SOFT"),
+             ("VER", "MEDIUM"), ("LEC", "HARD"))]
+    assert long_run_compound(runs) == "SOFT"
+    facts = headline_facts([{"driver": "RUS", "position": 1, "gap": 0}], {"RUS": "Russell"})
+    cfg = tomllib.loads(post_toml(MEETINGS[2] | {"year": 2026}, "FP2", facts, "SOFT"))
+    lr = next(s for s in cfg["slides"] if s["analysis"] == "long_runs")
+    assert lr["compound"] == "SOFT" and "on Softs" in lr["subtitle"]
+    cfg = tomllib.loads(post_toml(MEETINGS[2] | {"year": 2026}, "FP2", facts, None))
+    assert "compound" not in next(s for s in cfg["slides"] if s["analysis"] == "long_runs")
+
+
+def test_small_pole_gap_is_not_rounded_up():
+    from stintlab.templates import slide_title
+    facts = {"P1": "GASLY", "P2": "RUSSELL", "gap": 0.06}
+    assert slide_title("telemetry", "Q", facts)[0] == "WHERE GASLY FOUND 0.06 S"
+    assert slide_title("telemetry", "Q", facts | {"gap": 0.837})[0] == "WHERE GASLY FOUND 0.8 S"

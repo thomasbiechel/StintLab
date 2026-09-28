@@ -22,10 +22,10 @@ subtitle = "SUBTITLE TODO"
 ```
 
 ## 2. VER war 11 Runden in RUSs Windschatten – warum hat er nicht überholt?
-*battle · Score 19.6*
+*battle · Score 17.8*
 
 - Kampf um P1
-- VER 0.38–0.71 s hinter RUS, Runden 40–50 (11 Runden)
+- VER 0.50–0.91 s hinter RUS, Runden 40–50 (11 Runden)
 - kein Überholmanöver
 - VER minus RUS pro Runde: S1 +0.18 · S2 +0.26 · S3 -0.45 · Runde +0.01 s
 - Muster: in einem Sektor klar schneller, in anderen langsamer → hebt sich auf
@@ -54,74 +54,6 @@ subtitle = "SUBTITLE TODO"
 
 [[slides]]
 analysis = "tow_effect"
-title    = "TITLE TODO"
-subtitle = "SUBTITLE TODO"
-
-```
-
-## 3. Wie ist ANT von P16 auf P5 gekommen?
-*mover · Score 9.3*
-
-- Start P16 → Ziel P5 (+11)
-- davon durch Ausfälle vor ihm: 1 (GAS) → auf der Strecke +10
-
-```toml
-[[slides]]
-analysis = "positions"
-drivers  = ["ANT"]
-title    = "TITLE TODO"
-subtitle = "SUBTITLE TODO"
-
-```
-
-## 4. Was hat das Safety Car in Runde 31 verändert – den Abstand oder das Ergebnis?
-*sc · Score 5.8*
-
-- Vorsprung RUS vor PIA nach Runde 30: 11.4 s
-- Im Ziel: RUS vor VER um 0.196 s
-- Top 6 vor dem SC: RUS PIA VER HAD LEC HAM · im Ziel: RUS VER HAD LEC ANT HAM (Stopps beachten!)
-
-```toml
-[[slides]]
-analysis = "gap_between"
-drivers  = ["RUS", "PIA"]
-title    = "TITLE TODO"
-subtitle = "SUBTITLE TODO"
-
-[[slides]]
-analysis = "pit_cycle"
-drivers  = ["RUS", "PIA"]
-laps     = [30, 38]
-title    = "TITLE TODO"
-subtitle = "SUBTITLE TODO"
-
-```
-
-## 5. P1 gegen P2: VER 0.196 s hinter RUS – wie knapp war es?
-*finish · Score 2.8*
-
-- Offizieller Abstand 0.196 s
-
-```toml
-[[slides]]
-analysis = "gap_between"
-drivers  = ["RUS", "VER"]
-title    = "TITLE TODO"
-subtitle = "SUBTITLE TODO"
-
-```
-
-## 6. ANT war im Schlussstint der 3.-schnellste – warum nur P5?
-*pace · Score 2.4*
-
-- Median Runden 42–51: +0.650 s auf den Schnellsten (RUS)
-- Ziel P5
-
-```toml
-[[slides]]
-analysis = "driver_pace"
-laps     = [42, 51]
-min_laps = 7
 title    = "TITLE TODO"
 subtitle = "SUBTITLE TODO"
 

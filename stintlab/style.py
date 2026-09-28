@@ -31,6 +31,26 @@ COLORS = {
     "accent": "#a855f7",   # StintLab-Lila ("schnellster Sektor"), kein Team, keine Mischung
 }
 
+# Neutralisationen – feste Signalfarben wie die echten Flaggen/Tafeln.
+# (Farbe, langer Name, kurzes Label, Textfarbe auf der Farbe)
+NEUTRAL_STYLE = {
+    "SC":  ("#f5c518", "SAFETY CAR", "SC", "black"),
+    "VSC": ("#f5c518", "VIRTUAL SAFETY CAR", "VSC", "black"),
+    "RED": ("#e10600", "RED FLAG", "RED FLAG", "white"),
+}
+
+
+def neutral_legend(kinds) -> str:
+    """Fußzeilen-Text zu den Farben, z. B. "yellow = SC/VSC · red = red flag"."""
+    kinds = set(kinds)
+    parts = []
+    if kinds & {"SC", "VSC"} or not kinds:
+        parts.append("yellow = SC/VSC")
+    if "RED" in kinds:
+        parts.append("red = red flag")
+    return " · ".join(parts)
+
+
 # Offizielle team_colour-Werte von OpenF1 (/drivers), Saison 2026
 TEAM_COLORS = {
     "Alpine": "#00A1E8",
@@ -150,3 +170,17 @@ def save_slide(fig, path):
     fig.savefig(path, dpi=DPI, facecolor=fig.get_facecolor())
     plt.close(fig)
     return path
+
+
+def shade_neutral(ax, race_control: list[dict], first: int, last: int) -> None:
+    """Neutralisierte Runden hinterlegen: SC/VSC grau, rote Flagge rot mit Label."""
+    from matplotlib.transforms import blended_transform_factory
+    from stintlab.race_control import neutral_phases
+    for lo, hi, kind in neutral_phases(race_control, first, last):
+        if kind == "RED":
+            color = NEUTRAL_STYLE["RED"][0]
+            ax.axvspan(lo - 0.5, hi + 0.5, color=color, alpha=0.22, linewidth=0, zorder=0)
+            ax.text((lo + hi) / 2, 0.985, "RED FLAG", transform=blended_transform_factory(ax.transData, ax.transAxes),
+                    ha="center", va="top", fontsize=7, fontweight="bold", color=color, zorder=6)
+        else:
+            ax.axvspan(lo - 0.5, hi + 0.5, color=COLORS["muted"], alpha=0.15, linewidth=0, zorder=0)

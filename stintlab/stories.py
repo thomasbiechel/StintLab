@@ -22,9 +22,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from statistics import median
 
+from stintlab.analyses.gap_between import line_gaps
 from stintlab.analyses.positions import compute_positions
 from stintlab.analyses.sector_delta import compute_sector_delta
-from stintlab.race_control import restricted_laps
+from stintlab.race_control import neutral_phases, restricted_laps
 
 BATTLE_GAP_S = 1.0
 BATTLE_MIN_LAPS = 5
@@ -90,7 +91,10 @@ def find_battles(data: dict, max_gap: float = BATTLE_GAP_S, min_laps: int = BATT
             if len(seq) < min_laps:
                 continue
             first, last = seq[0][0], seq[-1][0]
-            gaps = [g for _, g in seq]
+            # Gefunden über Zeitstempel (±0,2 s), berichtet mit der genaueren
+            # Rückwärts-Rechnung aus den offiziellen Rundenzeiten, wenn möglich
+            exact, _ = line_gaps(data, a, b)
+            gaps = [exact.get(n, g) for n, g in seq]
             # hat B danach überholt? (Positionen in der Runde nach dem Duell)
             pa, pb = positions.get(a, {}).get(last + 1), positions.get(b, {}).get(last + 1)
             passed = bool(pa and pb and pb < pa)
@@ -187,6 +191,9 @@ def find_movers(data: dict, min_places: int = MOVER_MIN_PLACES) -> list[Story]:
 
 def find_safety_car(data: dict) -> list[Story]:
     restricted = sorted(restricted_laps(data.get("race_control", [])))
+    phases = neutral_phases(data.get("race_control", []))
+    name = {"SC": "das Safety Car", "VSC": "das VSC", "RED": "die rote Flagge"}[phases[0][2]] if phases else ""
+    short = {"SC": "SC", "VSC": "VSC", "RED": "der roten Flagge"}[phases[0][2]] if phases else ""
     ends = data.get("lap_ends", {})
     rows = sorted((r for r in data.get("results", []) if r.get("position")), key=lambda r: r["position"])
     if not restricted or len(rows) < 2:
@@ -202,9 +209,9 @@ def find_safety_car(data: dict) -> list[Story]:
     top = [r["driver"] for r in rows[:6]]
     facts = [f"Vorsprung {order_before[0]} vor {order_before[1]} nach Runde {before}: {lead:.1f} s",
              f"Im Ziel: {p1} vor {p2}" + (f" um {final_gap:.3f} s" if final_gap is not None else ""),
-             f"Top 6 vor dem SC: {' '.join(order_before[:6])} · im Ziel: {' '.join(top)} (Stopps beachten!)"]
+             f"Top 6 vor {'' if short.startswith('der') else 'dem '}{short}: {' '.join(order_before[:6])} · im Ziel: {' '.join(top)} (Stopps beachten!)"]
     return [Story("sc", lead / max(final_gap or 1.0, 0.1) / 10,
-                  f"Was hat das Safety Car in Runde {restricted[0]} verändert – den Abstand oder das Ergebnis?",
+                  f"Was hat {name} in Runde {restricted[0]} verändert – den Abstand oder das Ergebnis?",
                   facts, [{"analysis": "gap_between", "drivers": [order_before[0], order_before[1]]},
                           {"analysis": "pit_cycle", "drivers": [order_before[0], order_before[1]],
                            "laps": [before, restricted[-1]]}])]

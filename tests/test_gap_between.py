@@ -86,3 +86,68 @@ def test_line_gaps_fall_back_to_timestamps_without_official_gap():
     data["results"][1]["gap"] = "+1 LAP"
     gaps, exact_from = line_gaps(data, "A", "B")
     assert exact_from is None and round(gaps[3], 3) == round(0.8 - 0.2, 3)
+
+
+def test_red_flag_after_safety_car_and_standing_restart():
+    # Echte Reihenfolge Monza 2026 (gekürzt): SC, dann rote Flagge als "Other",
+    # Neustart mit Formationsrunde und stehendem Start, später ein VSC
+    msgs = [
+        {"lap": 1, "category": "Other", "message": "RACE START"},
+        {"lap": 3, "category": "SafetyCar", "message": "SAFETY CAR DEPLOYED"},
+        {"lap": 3, "category": "SessionStatus", "message": "SESSION ABORTED"},
+        {"lap": 3, "category": "Other", "message": "RED FLAG - RACE SUSPENDED"},
+        {"lap": 4, "category": "Flag", "flag": "CLEAR", "message": "TRACK CLEAR"},
+        {"lap": 4, "category": "SessionStatus", "message": "SESSION STARTED"},
+        {"lap": 4, "category": "Other", "message": "STANDING START"},
+        {"lap": 5, "category": "Other", "message": "EXTRA FORMATION LAP"},
+        {"lap": 5, "category": "Other", "message": "STANDING START"},
+        {"lap": 28, "category": "SafetyCar", "message": "VSC DEPLOYED"},
+        {"lap": 29, "category": "SafetyCar", "message": "VSC ENDING"},
+    ]
+    assert restricted_laps(msgs) == {3, 4, 5, 6, 28, 29}
+
+
+def test_standing_start_at_race_start_is_not_restricted():
+    msgs = [{"lap": 1, "category": "Other", "message": "STANDING START"}]
+    assert restricted_laps(msgs) == set()
+
+
+def test_chequered_flag_is_not_a_red_flag():
+    """"CHEQUERED FLAG" enthält "RED FLAG" – darf die letzte Runde nicht sperren."""
+    from stintlab.race_control import restricted_laps
+    rc = [
+        {"lap": 31, "category": "SafetyCar", "flag": None, "message": "SAFETY CAR DEPLOYED"},
+        {"lap": 35, "category": "SafetyCar", "flag": None, "message": "SAFETY CAR IN THIS LAP"},
+        {"lap": 51, "category": "Flag", "flag": "CHEQUERED", "message": "CHEQUERED FLAG"},
+        {"lap": 51, "category": "SessionStatus", "flag": None, "message": "SESSION FINISHED"},
+    ]
+    assert restricted_laps(rc) == set(range(31, 36))
+
+
+def test_red_flag_is_labelled_red_not_safety_car():
+    # Monza 2026: SC und rote Flagge in derselben Runde -> ab dort RED,
+    # Neustartrunden gehören zur roten Flagge, das spätere VSC bleibt VSC
+    from stintlab.race_control import neutral_phases
+    msgs = [
+        {"lap": 1, "category": "Other", "message": "RACE START"},
+        {"lap": 3, "category": "SafetyCar", "message": "SAFETY CAR DEPLOYED"},
+        {"lap": 3, "category": "SessionStatus", "message": "SESSION ABORTED"},
+        {"lap": 3, "category": "Other", "message": "RED FLAG - RACE SUSPENDED"},
+        {"lap": 4, "category": "Flag", "flag": "CLEAR", "message": "TRACK CLEAR"},
+        {"lap": 4, "category": "SessionStatus", "message": "SESSION STARTED"},
+        {"lap": 5, "category": "Other", "message": "EXTRA FORMATION LAP"},
+        {"lap": 5, "category": "Other", "message": "STANDING START"},
+        {"lap": 28, "category": "SafetyCar", "message": "VSC DEPLOYED"},
+        {"lap": 29, "category": "SafetyCar", "message": "VSC ENDING"},
+    ]
+    assert neutral_phases(msgs) == [(3, 6, "RED"), (28, 29, "VSC")]
+
+
+def test_safety_car_before_red_flag_keeps_its_laps():
+    from stintlab.race_control import neutral_phases
+    msgs = [
+        {"lap": 10, "category": "SafetyCar", "message": "SAFETY CAR DEPLOYED"},
+        {"lap": 12, "category": "Flag", "flag": "RED", "message": "RED FLAG"},
+        {"lap": 13, "category": "SessionStatus", "message": "SESSION STARTED"},
+    ]
+    assert neutral_phases(msgs) == [(10, 11, "SC"), (12, 13, "RED")]

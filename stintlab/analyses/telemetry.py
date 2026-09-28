@@ -36,7 +36,36 @@ def fastest_lap(data: dict, driver: str, compound: str | None, part: str | None)
     return min(laps, key=lambda l: float(l["LapTime"])) if laps else None
 
 
-def lap_trace(car_data: list[dict], lap: dict) -> tuple[np.ndarray, np.ndarray]:
+FROZEN_S = 1.5   # so lange exakt gleiche Geschwindigkeit = eingefrorener Messwert
+
+
+def frozen_runs(t: np.ndarray, v: np.ndarray, min_s: float = FROZEN_S) -> list[tuple[float, float]]:
+    """Zeitfenster [(von, bis)], in denen die Geschwindigkeit exakt gleich bleibt.
+
+    Echte Fahrt ändert sich bei ~4 Hz fast immer um mindestens 1 km/h. Monza
+    2026 Q3, Gasly: 17 Punkte lang 308 km/h (4,7 s) – mitten in der Anbremszone
+    zur Roggia-Schikane, danach sofort 118 km/h. Ohne Erkennung wird die
+    Strecke dort ~120 m zu lang und der Abstand springt auf 2,4 s.
+    """
+    runs, start = [], 0
+    for i in range(1, len(v) + 1):
+        if i == len(v) or v[i] != v[start]:
+            if t[i - 1] - t[start] >= min_s and v[start] > 50:
+                runs.append((float(t[start]), float(t[i - 1])))
+            start = i
+    return runs
+
+
+def _drop_frozen(t: np.ndarray, v: np.ndarray, runs: list[tuple[float, float]]):
+    """Innere Punkte eingefrorener Abschnitte entfernen → dort wird zwischen dem
+    letzten echten und dem nächsten echten Wert interpoliert."""
+    keep = np.ones(len(t), dtype=bool)
+    for a, b in runs:
+        keep &= ~((t > a) & (t <= b))
+    return t[keep], v[keep]
+
+
+def lap_trace(car_data: list[dict], lap: dict, frozen: list | None = None) -> tuple[np.ndarray, np.ndarray]:
     """(Zeit ab Rundenbeginn [s], Geschwindigkeit [km/h]) für genau eine Runde.
 
     Anfang und Ende werden aus den Nachbarpunkten interpoliert, damit die
@@ -56,6 +85,11 @@ def lap_trace(car_data: list[dict], lap: dict) -> tuple[np.ndarray, np.ndarray]:
         raise ValueError(f"{lap['Driver']}: zu wenige Telemetriepunkte für Runde {lap['LapNumber']}")
     t_all = np.array([p[0] for p in points])
     v_all = np.array([p[1] for p in points])
+    runs = frozen_runs(t_all, v_all)
+    if runs:
+        t_all, v_all = _drop_frozen(t_all, v_all, runs)
+        if frozen is not None:     # Aufrufer möchte wissen, wo interpoliert wurde
+            frozen.extend(r for r in runs if r[1] > 0 and r[0] < lap_time)
     inside = (t_all > 0) & (t_all < lap_time)
     t = np.concatenate([[0.0], t_all[inside], [lap_time]])
     v = np.concatenate([[np.interp(0.0, t_all, v_all)], v_all[inside],
@@ -77,10 +111,33 @@ def compare(a: dict, b: dict) -> dict:
     """
     frac = np.linspace(0, 1, GRID)
     out = {"frac": frac}
+    for d in (a, b):
+        d["dist"] = distance(d["t"], d["v"])
+        d["length"] = d["dist"][-1]
+        d["frac"] = d["dist"] / d["length"]
+
+    # Fahrer mit Lücke (eingefrorenes Tempo): seine Rundenlänge ist falsch (in der
+    # Lücke fehlt Strecke). Nicht durch die eigene Länge teilen – sonst wandert der
+    # Fehler über die ganze Runde. Stattdessen Länge des anderen Fahrers nehmen:
+    # vor der Lücke vom Start vorwärts, danach vom Ziel rückwärts, dazwischen gerade.
+    for d, other in ((a, b), (b, a)):
+        if not d.get("frozen") or other.get("frozen"):
+            continue
+        t0 = min(h[0] for h in d["frozen"])
+        t1 = max(h[1] for h in d["frozen"])
+        L = other["length"]
+        f = np.empty_like(d["dist"])
+        pre, post = d["t"] <= t0, d["t"] >= t1
+        f[pre] = d["dist"][pre] / L
+        f[post] = 1.0 - (d["length"] - d["dist"][post]) / L
+        f0 = float(f[pre][-1]) if pre.any() else 0.0
+        f1 = float(f[post][0]) if post.any() else 1.0
+        mid = ~pre & ~post
+        f[mid] = f0 + (d["t"][mid] - t0) / (t1 - t0) * (f1 - f0)
+        d["frac_raw"] = d["frac"]
+        d["frac"] = np.clip(np.maximum.accumulate(f), 0.0, 1.0)
+
     for key, d in (("a", a), ("b", b)):
-        dist = distance(d["t"], d["v"])
-        d["length"] = dist[-1]
-        d["frac"] = dist / dist[-1]
         out[f"speed_{key}"] = np.interp(frac, d["frac"], d["v"])
         out[f"time_{key}"] = np.interp(frac, d["frac"], d["t"])
     raw = out["time_b"] - out["time_a"]
@@ -91,16 +148,42 @@ def compare(a: dict, b: dict) -> dict:
     if a.get("sectors") and b.get("sectors") and all(a["sectors"]) and all(b["sectors"]):
         ca = np.cumsum(a["sectors"][:2])
         cb = np.cumsum(b["sectors"][:2])
+        in_hole = lambda d, x: any(t0 - 0.3 < x < t1 + 0.3 for t0, t1 in d.get("frozen", []))
         for ta, tb in zip(ca, cb):
-            f = float(np.interp(ta, a["t"], a["frac"]))
+            fa = float(np.interp(ta, a["t"], a["frac"]))
+            fb = float(np.interp(tb, b["t"], b["frac"]))
+            # Ort der Sektorgrenze vom Fahrer, der dort echte Daten hat (Monza 2026:
+            # Gaslys S1-Linie liegt in seiner Lücke → Russells Daten nehmen)
+            f = fb if in_hole(a, ta) and not in_hole(b, tb) else fa
             marks.append(f)
             knots.append(f)
             targets.append(tb - ta)
-            # Gegenprobe: Bei B muss die Sektorgrenze am selben Punkt liegen
-            out.setdefault("sector_mismatch", []).append(abs(f - float(np.interp(tb, b["t"], b["frac"]))))
+            # Gegenprobe: Bei beiden muss die Sektorgrenze ungefähr am selben Punkt liegen
+            if not in_hole(a, ta) and not in_hole(b, tb):
+                out.setdefault("sector_mismatch", []).append(abs(fa - fb))
     knots.append(1.0)
     targets.append(b["lap_time"] - a["lap_time"])
-    correction = np.interp(frac, knots, np.array(targets) - np.interp(knots, frac, raw))
+
+    # Korrektur zwischen den offiziellen Stützstellen – aber nicht über Lücken
+    # hinweg verschmieren: Liegt eine Stützstelle in einer Lücke, ist der Abstand
+    # dort nicht messbar → weglassen. Vor einer Lücke gilt die Korrektur der
+    # vorigen Stützstelle, danach die der nächsten (der Streckenfehler aus der
+    # Lücke ist danach ein fester Versatz). Monza 2026 Q3: sonst +0,35 s in S1.
+    hole_fracs = []
+    for d in (a, b):
+        for t0, t1 in d.get("frozen", []):
+            hole_fracs.append((float(np.interp(t0, d["t"], d["frac"])), float(np.interp(t1, d["t"], d["frac"]))))
+    in_frac_hole = lambda f: any(f0 - 0.005 < f < f1 + 0.005 for f0, f1 in hole_fracs)
+    corr_at = {k: tg - float(np.interp(k, frac, raw)) for k, tg in zip(knots, targets)}
+    valid = sorted((k, c) for k, c in corr_at.items() if not in_frac_hole(k) or k in (0.0, 1.0))
+    ck = list(valid)
+    for f0, f1 in sorted(hole_fracs):
+        prev = [c for k, c in valid if k <= f0]
+        nxt = [c for k, c in valid if k >= f1]
+        if prev and nxt:
+            ck += [(f0, prev[-1]), (f1, nxt[0])]
+    ck.sort()
+    correction = np.interp(frac, [k for k, _ in ck], [c for _, c in ck])
     out["delta"] = raw + correction
     out["sector_marks"] = marks
     out["length_m"] = (a["length"] + b["length"]) / 2
@@ -112,9 +195,10 @@ def _driver_trace(data: dict, drv: str, lap: dict, refresh: bool = False) -> dic
     car_data = data.get("car_data", {}).get(drv)
     if car_data is None:
         car_data = openf1.cached_fetch_driver("car_data", data["session_key"], data["numbers"][drv], refresh)
-    t, v = lap_trace(car_data, lap)
+    frozen: list = []
+    t, v = lap_trace(car_data, lap, frozen)
     sectors = [lap.get(k) for k in SECTORS]
-    return {"t": t, "v": v, "lap_time": float(lap["LapTime"]),
+    return {"t": t, "v": v, "lap_time": float(lap["LapTime"]), "frozen": frozen,
             "sectors": [float(s) for s in sectors] if all(sectors) else None}
 
 
@@ -145,6 +229,10 @@ def render_telemetry(ax, data: dict, drivers: list[str] | None = None,
     for i, diff in enumerate(res.get("sector_mismatch", []), start=1):
         if diff > MAX_SECTOR_MISMATCH:
             print(f"⚠ Telemetrie: Sektorgrenze {i} liegt bei beiden Fahrern {diff:.1%} der Runde auseinander – Daten prüfen")
+    for d, tr in zip(drivers, (a, b)):
+        for t0, t1 in tr["frozen"]:
+            print(f"⚠ Telemetrie {d}: Geschwindigkeit {t1 - t0:.1f} s eingefroren ({t0:.1f}–{t1:.1f} s der Runde) "
+                  "– dort interpoliert, auf der Slide markiert")
     if res["length_diff"] > MAX_LENGTH_DIFF:
         print(f"⚠ Telemetrie: berechnete Rundenlänge weicht um {res['length_diff']:.1%} ab – Daten prüfen")
 
@@ -152,6 +240,13 @@ def render_telemetry(ax, data: dict, drivers: list[str] | None = None,
     ca, cb = team_color(teams.get(drivers[0])), team_color(teams.get(drivers[1]))
     same_team = teams.get(drivers[0]) == teams.get(drivers[1])
     km = res["frac"] * res["length_m"] / 1000
+    # In eingefrorenen Abschnitten keine erfundenen Werte zeigen: Linie dort unterbrechen
+    for key, tr in (("speed_a", a), ("speed_b", b)):
+        for t0, t1 in tr["frozen"]:
+            f0, f1 = (float(np.interp(x, tr["t"], tr["frac"])) for x in (t0, t1))
+            hole = (res["frac"] > f0) & (res["frac"] < f1)
+            res[key] = np.where(hole, np.nan, res[key])
+            res["delta"] = np.where(hole, np.nan, res["delta"])
 
     # Zwei Bereiche: oben Geschwindigkeit, unten Abstand
     fig = ax.figure
@@ -172,8 +267,9 @@ def render_telemetry(ax, data: dict, drivers: list[str] | None = None,
 
     ax_d.axhline(0, color=COLORS["muted"], linewidth=0.8)
     ax_d.plot(km, res["delta"], color=COLORS["text"], linewidth=1.2)
-    ax_d.fill_between(km, res["delta"], 0, where=res["delta"] >= 0, color=ca, alpha=0.35, linewidth=0)
-    ax_d.fill_between(km, res["delta"], 0, where=res["delta"] < 0, color=cb, alpha=0.35, linewidth=0)
+    ok = ~np.isnan(res["delta"])
+    ax_d.fill_between(km, res["delta"], 0, where=ok & (res["delta"] >= 0), color=ca, alpha=0.35, linewidth=0)
+    ax_d.fill_between(km, res["delta"], 0, where=ok & (res["delta"] < 0), color=cb, alpha=0.35, linewidth=0)
     ax_d.set_ylabel(f"Gap (s)\n▲ {drivers[0]} ahead", fontsize=7.5)
     ax_d.set_xlabel("Lap distance (km)")
     ax_d.set_xlim(0, km[-1])
@@ -191,6 +287,19 @@ def render_telemetry(ax, data: dict, drivers: list[str] | None = None,
             ax.text((x0 + x1) / 2, top, f"S{i + 1}  {leader} {abs(diff):.3f}", ha="center", va="bottom",
                     fontsize=8, color=ca if diff >= 0 else cb, fontweight="bold")
 
+    # Abschnitte ohne echte Messwerte schraffieren – ehrlicher als eine glatte Linie
+    notes = []
+    for d, tr in zip(drivers, (a, b)):
+        frac_t = tr["frac"]
+        for t0, t1 in tr["frozen"]:
+            k0, k1 = (float(np.interp(x, tr["t"], frac_t)) * res["length_m"] / 1000 for x in (t0, t1))
+            for a_ in (ax, ax_d):
+                a_.axvspan(k0, k1, facecolor="none", edgecolor=COLORS["muted"], hatch="///", linewidth=0,
+                           alpha=0.5, zorder=0)
+            notes.append(f"{d} no speed data {k0:.1f}–{k1:.1f} km")
+    if notes:
+        ax.text(0.99, 0.02, " · ".join(notes), transform=ax.transAxes, ha="right", va="bottom",
+                fontsize=7, color=COLORS["muted"])
     ax_d.text(0.99, 0.04, "OpenF1 car data · ~4 Hz · braking points approximate",
               transform=ax_d.transAxes, ha="right", va="bottom", fontsize=7, color=COLORS["muted"])
     return res

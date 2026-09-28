@@ -24,7 +24,7 @@ from datetime import datetime
 from matplotlib.ticker import MaxNLocator
 
 from stintlab.race_control import restricted_laps
-from stintlab.style import COLORS, style_axes, team_color
+from stintlab.style import COLORS, shade_neutral, style_axes, team_color
 
 
 def compute_positions(lap_ends: dict[str, dict[int, datetime]],
@@ -74,9 +74,7 @@ def render_positions(ax, data: dict, drivers: list[str] | None = None,
     teams = data.get("teams", {})
     style_axes(ax, grid_axis="y")
     all_laps = sorted({n for v in positions.values() for n in v})
-    for lap in sorted(restricted_laps(data.get("race_control", []))):
-        if all_laps[0] <= lap <= all_laps[-1]:
-            ax.axvspan(lap - 0.5, lap + 0.5, color=COLORS["muted"], alpha=0.15, linewidth=0)
+    shade_neutral(ax, data.get("race_control", []), all_laps[0], all_laps[-1])
 
     for drv, series in positions.items():
         if drv in highlight:

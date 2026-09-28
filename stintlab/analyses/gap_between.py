@@ -27,7 +27,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from stintlab.race_control import restricted_laps
-from stintlab.style import COLORS, style_axes, team_color
+from stintlab.style import COLORS, shade_neutral, style_axes, team_color
 
 
 def compute_gap_between(lap_ends: dict[str, dict[int, datetime]],
@@ -104,11 +104,9 @@ def render_gap_between(ax, data: dict, driver_a: str, driver_b: str,
 
     style_axes(ax, grid_axis="y")
 
-    # Neutralisierte Runden grau hinterlegen
-    for lap in sorted(restricted_laps(data.get("race_control", []))):
-        if lap not in gaps:
-            continue
-        ax.axvspan(lap - 0.5, lap + 0.5, color=COLORS["muted"], alpha=0.15, linewidth=0)
+    # Neutralisierte Runden hinterlegen: SC/VSC grau, rote Flagge rot
+    if gaps:
+        shade_neutral(ax, data.get("race_control", []), min(gaps), max(gaps))
 
     laps = list(gaps)
     values = list(gaps.values())
