@@ -50,6 +50,21 @@ def test_slowmo_is_slowest_at_the_pass_and_normal_far_away():
     ts = slowmo_times(100.0, 4.5)
     speed = np.diff(ts) * 60
     i = int(np.argmin(np.abs(ts[:-1] - 100.0)))
-    assert speed[i] == pytest.approx(0.45, abs=0.02)
+    assert speed[i] == pytest.approx(0.5, abs=0.02)
     assert speed[0] > 0.95
-    assert ts[0] == pytest.approx(100.0 - 2.2)
+    assert ts[0] == pytest.approx(100.0 - 2.0)
+
+
+def test_runner_up_only_for_the_winner_with_official_gap():
+    from stintlab.reels.comeback import runner_up
+    data = {"results": [{"driver": "ANT", "position": 1, "gap": 0},
+                        {"driver": "RUS", "position": 2, "gap": 3.857},
+                        {"driver": "VER", "position": 3, "gap": "+1 LAP"}]}
+    assert runner_up(data, "ANT") == ("RUS", 3.857)
+    assert runner_up(data, "RUS") is None        # nicht gewonnen → kein Abstand „zum Zweiten“
+
+
+def test_runner_up_without_numeric_gap_is_none():
+    from stintlab.reels.comeback import runner_up
+    data = {"results": [{"driver": "ANT", "position": 1}, {"driver": "RUS", "position": 2, "gap": "+1 LAP"}]}
+    assert runner_up(data, "ANT") is None

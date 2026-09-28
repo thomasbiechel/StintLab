@@ -13,5 +13,7 @@ result   = "Antonelli wins by 3.857 s"
 analysis = "comeback"
 drivers  = ["ANT"]
 # hook/result optional – Standard aus den Daten:
-# hook   = "P19 → P1 – 22 overtakes on track"
+# hook   = "P19 → P1 – then he had to do it again"   (Standard, wenn er den Zielplatz zwischendurch verloren hat)
 # pass   = { lap = 50, rival = "RUS" }   # Standard: das Manöver auf den Zielplatz
+# Seite des Manövers steht nicht in den Daten – nach TV-Bildern bestätigt: links
+pass     = { lap = 50, rival = "RUS", side = "left" }
