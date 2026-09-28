@@ -54,3 +54,35 @@ def test_sector_clear_does_not_end_safety_car_early():
         {"lap": 25, "category": "SafetyCar", "flag": None, "message": "SAFETY CAR IN THIS LAP"},
     ]
     assert restricted_laps(msgs) == {20, 21, 22, 23, 24, 25}
+
+def _race_with_noisy_timestamps():
+    """A und B, B jede Runde 0,1 s langsamer; Zeitstempel mit bis zu ±0,2 s Fehler."""
+    from stintlab.analyses.gap_between import line_gaps  # noqa: F401
+    noise = [0.0, 0.15, -0.2, 0.1, -0.05]
+    ends = {"A": {}, "B": {}}
+    laps = []
+    t_a, t_b = 0.0, 0.5
+    for n in range(1, 6):
+        t_a += 100.0
+        t_b += 100.1
+        ends["A"][n] = T0 + timedelta(seconds=t_a)
+        ends["B"][n] = T0 + timedelta(seconds=t_b + noise[n - 1])
+        laps += [{"Driver": "A", "LapNumber": n, "LapTime": 100.0},
+                 {"Driver": "B", "LapNumber": n, "LapTime": 100.1}]
+    results = [{"driver": "A", "position": 1, "gap": 0.0}, {"driver": "B", "position": 2, "gap": 1.0}]
+    return {"lap_ends": ends, "laps": laps, "results": results}
+
+
+def test_line_gaps_count_back_from_the_official_finish_gap():
+    from stintlab.analyses.gap_between import line_gaps
+    gaps, exact_from = line_gaps(_race_with_noisy_timestamps(), "A", "B")
+    assert exact_from == 1
+    assert [round(gaps[n], 3) for n in range(1, 6)] == [0.6, 0.7, 0.8, 0.9, 1.0]
+
+
+def test_line_gaps_fall_back_to_timestamps_without_official_gap():
+    from stintlab.analyses.gap_between import line_gaps
+    data = _race_with_noisy_timestamps()
+    data["results"][1]["gap"] = "+1 LAP"
+    gaps, exact_from = line_gaps(data, "A", "B")
+    assert exact_from is None and round(gaps[3], 3) == round(0.8 - 0.2, 3)

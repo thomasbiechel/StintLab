@@ -4,6 +4,14 @@ METHODE: Der Abstand nach Runde N ist die Zeitdifferenz, mit der beide Fahrer
 die Ziellinie am Ende von Runde N überqueren. Das ist genau der Abstand, den
 eine Zeitnahme an der Linie messen würde.
 
+GENAUER, WENN MÖGLICH (line_gaps): Die Zeitstempel (date_start) sind bei
+OpenF1 bis ~0,2 s ungenau – in jeder Runde, nicht nur in der letzten (Baku
+2026, RUS/VER Runde 50: Zeitstempel 0,71 s, tatsächlich 0,91 s). Wenn beide
+Fahrer klassiert in der Führungsrunde ins Ziel kamen, wird deshalb vom
+OFFIZIELLEN Zielabstand aus rückwärts mit den offiziellen Rundenzeiten
+gerechnet:  Abstand(n−1) = Abstand(n) − (Rundenzeit_b(n) − Rundenzeit_a(n)).
+Wo eine Rundenzeit fehlt (oft Runde 1), gelten davor wieder die Zeitstempel.
+
 Bewusst NICHT verwendet: die Differenz zweier "Gap to Leader"-Werte. Die
 werden für jeden Fahrer zu einem eigenen Zeitpunkt abgelesen. Wechselt
 dazwischen der Führende (z. B. weil er an die Box fährt), beziehen sich die
@@ -34,6 +42,45 @@ def compute_gap_between(lap_ends: dict[str, dict[int, datetime]],
     return {lap: (b[lap] - a[lap]).total_seconds() for lap in sorted(set(a) & set(b))}
 
 
+def official_pair_gap(data: dict, driver_a: str, driver_b: str) -> float | None:
+    """Offizieller Zielabstand (> 0 = A vorne) – nur wenn beide klassiert und
+    in der Führungsrunde sind (gap_to_leader als Zahl, nicht "+1 LAP")."""
+    rows = {r["driver"]: r for r in data.get("results", []) if r.get("position")}
+    ra, rb = rows.get(driver_a), rows.get(driver_b)
+    if not ra or not rb:
+        return None
+    ga, gb = ra.get("gap"), rb.get("gap")
+    ga = 0.0 if ra["position"] == 1 and not isinstance(ga, (int, float)) else ga
+    if not isinstance(ga, (int, float)) or not isinstance(gb, (int, float)):
+        return None
+    return float(gb) - float(ga)
+
+
+def line_gaps(data: dict, driver_a: str, driver_b: str) -> tuple[dict[int, float], int | None]:
+    """({Runde: Abstand}, erste Runde, ab der rückwärts gerechnet wurde – oder None).
+
+    Siehe Moduldoku: offizieller Zielabstand + offizielle Rundenzeiten, sonst
+    Zeitstempel."""
+    gaps = compute_gap_between(data.get("lap_ends", {}), driver_a, driver_b)
+    official = official_pair_gap(data, driver_a, driver_b)
+    if official is None or not gaps:
+        return gaps, None
+    times: dict[str, dict[int, float]] = {driver_a: {}, driver_b: {}}
+    for lap in data.get("laps", []):
+        if lap.get("Driver") in times and lap.get("LapTime"):
+            times[lap["Driver"]][lap["LapNumber"]] = float(lap["LapTime"])
+    last = max(gaps)
+    if max(times[driver_a], default=0) != last or max(times[driver_b], default=0) != last:
+        return gaps, None                     # nicht beide bis ins Ziel mit Rundenzeiten
+    g, n = official, last
+    gaps[n] = g
+    while n - 1 in gaps and n in times[driver_a] and n in times[driver_b]:
+        g -= times[driver_b][n] - times[driver_a][n]
+        n -= 1
+        gaps[n] = g
+    return gaps, n
+
+
 def render_gap_between(ax, data: dict, driver_a: str, driver_b: str,
                        laps: tuple[int, int] | None = None) -> dict[int, float]:
     """Zeichnet den Abstand driver_a ↔ driver_b auf ax. Gibt die Werte zurück.
@@ -44,7 +91,7 @@ def render_gap_between(ax, data: dict, driver_a: str, driver_b: str,
     Erwartet in data (siehe stintlab.session):
       "lap_ends", "race_control", "pit_stops", "teams"
     """
-    gaps = compute_gap_between(data.get("lap_ends", {}), driver_a, driver_b)
+    gaps, exact_from = line_gaps(data, driver_a, driver_b)
     if laps:
         first, last = laps
         gaps = {n: g for n, g in gaps.items() if first <= n <= last}
@@ -109,5 +156,8 @@ def render_gap_between(ax, data: dict, driver_a: str, driver_b: str,
                 color=color_b, fontsize=9, fontweight="bold", va="bottom")
     ax.set_xlabel("Lap")
     ax.set_ylabel(f"Gap {driver_a} ↔ {driver_b} (s)")
+    note = (f"gap from official lap times, counted back from the official finish gap"
+            if exact_from is not None and exact_from <= laps[-1] else "gap from timing timestamps · ±0.2 s")
+    ax.text(0.99, 0.02, note, transform=ax.transAxes, ha="right", va="bottom", fontsize=7.5, color=COLORS["muted"])
 
     return gaps

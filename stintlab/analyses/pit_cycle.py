@@ -15,14 +15,14 @@ So ist er auch beschriftet.
 
 from __future__ import annotations
 
-from stintlab.analyses.gap_between import compute_gap_between
+from stintlab.analyses.gap_between import line_gaps
 from stintlab.style import COLORS, style_axes, team_color
 
 
 def compute_pit_cycle(data: dict, driver_a: str, driver_b: str,
                       before: int, after: int) -> dict[str, float]:
     """Zahlen für den Wasserfall. Alle Werte aus Sicht von driver_a."""
-    gaps = compute_gap_between(data["lap_ends"], driver_a, driver_b)
+    gaps, _ = line_gaps(data, driver_a, driver_b)
     for lap in (before, after):
         if lap not in gaps:
             raise ValueError(f"Kein Abstand {driver_a}/{driver_b} für Runde {lap}")

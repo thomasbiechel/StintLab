@@ -25,7 +25,7 @@ import numpy as np
 from matplotlib import animation
 from matplotlib import pyplot as plt
 
-from stintlab.analyses.gap_between import compute_gap_between
+from stintlab.analyses.gap_between import line_gaps
 from stintlab.analyses.results import race_rows
 from stintlab.race_control import restricted_laps
 from stintlab.reels.ghost_lap import _ffmpeg
@@ -67,7 +67,7 @@ def gap_series(data: dict, a: str, b: str, laps: tuple[int, int] | None = None,
     für die letzte Rennrunde der offizielle Abstand verwendet.
     skip: Runden auslassen, z. B. Boxenstopp-Runden mit Ausreißern.
     """
-    gaps = compute_gap_between(data.get("lap_ends", {}), a, b)
+    gaps, _ = line_gaps(data, a, b)   # letzte Runde = offizieller Abstand, davor Rundenzeiten
     if gaps:
         official = official_final_gap(data, a, b)
         last = max(gaps)

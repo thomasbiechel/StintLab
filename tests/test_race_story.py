@@ -17,7 +17,8 @@ def prep():
 
 def test_default_track_lap_is_the_lap_before_the_safety_car(prep):
     assert prep["track_lap"] == 5
-    assert prep["peak"] == pytest.approx(6.0, abs=0.1)
+    # offizieller Zielabstand 0,45 statt 0,5 → rückwärts gerechnet alles 0,05 s kleiner
+    assert prep["peak"] == pytest.approx(5.95, abs=0.1)
 
 
 def test_live_gap_on_the_map_matches_the_known_gap(prep):
