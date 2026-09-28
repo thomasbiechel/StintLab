@@ -68,7 +68,7 @@ def test_frame_list_order(prep):
     for p, _, _ in frame_list(prep):
         if not phases or phases[-1] != p:
             phases.append(p)
-    assert phases == ["hook", "map", "chart", "final", "result", "logo"]
+    assert phases == ["open", "map", "chart", "final", "result"]
 
 
 def test_smooth_skips_nan():
@@ -91,3 +91,14 @@ def test_final_timeline_slows_to_real_time_at_the_finish():
 def test_final_window_from_config():
     p = prepare(make_race(GAPS, sc_laps=(6, 7)), {"final_window": 20})
     assert p["t_finish"] - p["fin_times"][0] == pytest.approx(20.0)
+
+
+def test_open_window_ends_well_before_the_finish(prep):
+    from stintlab.reels.race_story import OPEN_END_MIN_S
+    assert prep["open_times"][-1] <= prep["t_finish"] - OPEN_END_MIN_S + 0.05
+    assert prep["open_times"][0] >= prep["t_finish"] - 200   # innerhalb der Zielrunde (100 s) + Rand
+
+
+def test_open_at_from_config():
+    p = prepare(make_race(GAPS, sc_laps=(6, 7), official=0.45), {"open_at": 30})
+    assert p["open_times"][0] == pytest.approx(p["t_finish"] - 30, abs=0.01)

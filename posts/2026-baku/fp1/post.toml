@@ -1,0 +1,21 @@
+# Azerbaijan Grand Prix 2026 · Baku · FP1 – angelegt von weekend.py
+# Titel mit TODO selbst formulieren, dann: python weekend.py <ort> FP1
+[session]
+meeting_key = 1295
+type = "FP1"
+
+[[slides]]
+analysis = "results"
+title    = "RUSSELL FASTEST IN FP1"
+subtitle = "Official classification · tyre = compound of each driver's fastest lap"
+
+[[slides]]
+analysis = "ideal_lap"
+view = "ideal"
+title    = "TITLE TODO"   # TODO
+subtitle = "Best FP1 sectors added up – the lap each driver had in him · ▲▼ = places vs. best lap"
+
+[[slides]]
+analysis = "long_runs"
+title    = "TITLE TODO"   # TODO
+subtitle = "Median lap time of each driver's longest FP1 run · fuel loads unknown"

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
-from stintlab.reels.ghost_lap import (FPS, HOOK_S, LAP_S, LOGO_S, REPLAY_S, REPLAY_WINDOW_S, RESULT_S,
+from stintlab.reels.ghost_lap import (FPS, LAP_S, OPEN_S, REPLAY_S, REPLAY_WINDOW_S, RESULT_S,
                                       frame_times, gap_at, lap_positions, needs_rotation, orient,
                                       replay_start, smooth_interp)
 
@@ -13,7 +13,7 @@ START = datetime(2026, 9, 12, 14, 50, tzinfo=timezone.utc)
 
 def test_frame_plan_covers_all_phases():
     frames = frame_times(91.824, 86.0)
-    assert len(frames) == int((HOOK_S + LAP_S + REPLAY_S + RESULT_S + LOGO_S) * FPS)
+    assert len(frames) == int((LAP_S + REPLAY_S + RESULT_S) * FPS)
     laps = [t for phase, t in frames if phase == "lap"]
     assert laps[0] == 0.0 and abs(laps[-1] - 91.824) < 1e-9
     replay = [t for phase, t in frames if phase == "replay"]
@@ -75,3 +75,10 @@ def test_without_replay_the_lap_runs_longer_and_total_stays_the_same():
     assert len(without) == len(with_replay)
     assert not any(phase == "replay" for phase, _ in without)
     assert sum(phase == "lap" for phase, _ in without) == int((LAP_S + REPLAY_S) * FPS)
+
+
+def test_open_phase_comes_first_and_runs_in_real_time():
+    frames = frame_times(102.526, 60.0, open_from=59.5)
+    opening = [t for phase, t in frames if phase == "open"]
+    assert frames[0][0] == "open" and len(opening) == int(OPEN_S * FPS)
+    assert opening[0] == 59.5 and abs((opening[-1] - opening[0]) - (OPEN_S - 1 / FPS)) < 1e-9

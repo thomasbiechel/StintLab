@@ -33,6 +33,20 @@ Python 3.11+ and an OpenF1 account (for authenticated API access).
 
 ## Usage
 
+### Race weekend: one command per session
+
+    python weekend.py sepang FP2        # search by location, country, circuit or name
+    python weekend.py latest Q          # most recent weekend
+    python weekend.py sepang R --no-reels
+
+The first run for a session creates `posts/<year>-<location>/<session>/post.toml`
+from a template (plus `<session>-reel/` for qualifying and the race), suggests
+titles from the official result and marks the rest with `# TODO`. Edit the
+titles, run the same command again – your edits are kept. A slide that fails
+is skipped and listed at the end instead of stopping the whole post.
+
+### Single post
+
 Each post is described by a `post.toml` (session, drivers, analyses, titles):
 
     python make_post.py posts/2026-madrid/post.toml

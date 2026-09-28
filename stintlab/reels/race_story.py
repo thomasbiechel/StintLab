@@ -1,18 +1,22 @@
 """Reel „Race Story“: wie ein Vorsprung entsteht, verschwindet und hält.
 
-ABLAUF (1080 × 1920, 9:16, 60 Bilder/s, ~24 s):
-  1. Haken (2 s):        „12.6 s → 0.196 s“ und der Haken-Text
-  2. Karte (5,5 s):      eine ganze Runde (track_lap, Standard: die Runde vor dem
+ABLAUF (1080 × 1920, 9:16, 60 Bilder/s, ~20 s):
+  1. Anfang 3D (3,5 s):  Verfolgerkamera (chase3d) in der Zielrunde, Haken-Text groß
+                         oben, laufender Abstand unten. Ersetzt den schwarzen
+                         Titel-Screen: Baku 2026 wischten dort ~50 % in der
+                         ersten Sekunde weg (Instagram „Übersprungen“ 52 %).
+  2. Karte (3,5 s):      eine ganze Runde (track_lap, Standard: die Runde vor dem
                          ersten Safety Car) auf der Streckenkarte, ~20-fach.
                          Beide Autos zur SELBEN Uhrzeit – die markierte Strecke
                          zwischen ihnen ist der Abstand.
-  3. Graph (4,5 s):      Abstand Runde für Runde; beim Safety Car blitzt es gelb,
+  3. Graph (4 s):      Abstand Runde für Runde; beim Safety Car blitzt es gelb,
                          die Zahl fällt zusammen
-  4. Graph-Zoom (2,5 s): die Achsen zoomen weich auf die Runden nach dem SC,
+  4. Graph-Zoom (2 s): die Achsen zoomen weich auf die Runden nach dem SC,
                          damit die Zehntel sichtbar werden
-  5. Zielrunde (8 s):    die halbe letzte Runde im mitfahrenden Zoom – Zeitraffer,
+  5. Zielrunde (6 s):    die halbe letzte Runde im mitfahrenden Zoom – Zeitraffer,
                          der zum Ziel weich auf Echtzeit abbremst, Zoom zieht mit zu
-  6. Auflösung (2,5 s) und Logo (1 s)
+  6. Auflösung (1,5 s) – kein Logo-Screen mehr: dort fiel die Zuschauerkurve
+     noch einmal ab, und ohne ihn läuft das Reel direkt in die Schleife
 
 LAUFENDER ABSTAND AUF DER KARTE: Zu jedem Zeitpunkt t steht A an Punkt P.
 Der Abstand ist die Zeit, bis B denselben Punkt P erreicht. Das ist genau
@@ -48,7 +52,8 @@ from stintlab.session import _parse
 from stintlab.style import COLORS, resolve_font, team_color
 
 WIDTH_PX, HEIGHT_PX, DPI, FPS = 1080, 1920, 150, 60
-HOOK_S, MAP_S, CHART_S, CHART_ZOOM_S, FINAL_S, RESULT_S, LOGO_S = 2.0, 5.5, 4.5, 2.5, 8.0, 2.5, 1.0
+OPEN_S, MAP_S, CHART_S, CHART_ZOOM_S, FINAL_S, RESULT_S = 3.5, 3.5, 4.0, 2.0, 6.0, 1.5
+OPEN_END_MIN_S = 8.0    # 3D-Anfang endet mindestens so lange vor dem Ziel (Ziel nicht vorwegnehmen)
 FINAL_FRACTION = 0.5    # Zielrunde: so viel der Runde vor dem Ziel (Standard, final_window überschreibt)
 FINAL_AFTER_S = 1.0     # echte Sekunden nach dem Ziel
 FINAL_END_SPEED = 1.0   # an der Ziellinie: Echtzeit
@@ -232,12 +237,38 @@ def prepare(data: dict, reel: dict) -> dict:
     map_gap = smooth(np.array([live_gap(ta, tb, t, max_gap, max_dist) for t in map_times]))
     fin_gap = smooth(np.array([live_gap(ta, tb, t, 3.0, max_dist) for t in fin_times]))
 
-    return {"a": a, "b": b, "x": x, "y": y, "blocks": blocks, "peak": peak,
+    from stintlab.reels.chase3d import Scene   # hier importiert: chase3d nutzt Track aus diesem Modul
+    scene = Scene(data, a, b)
+    if reel.get("open_at") is not None:
+        t_open = t_finish - float(reel["open_at"])
+    else:
+        t_open = pick_open_start(ta, tb, last_start, t_finish, max_dist)
+    open_times = t_open + np.arange(int(OPEN_S * FPS)) / FPS
+
+    return {"a": a, "b": b, "x": x, "y": y, "blocks": blocks, "peak": peak, "scene": scene,
+            "open_times": open_times,
             "final": float(y[-1]), "track_lap": track_lap, "ta": ta, "tb": tb,
             "win": win, "ref_win": ref_win, "final_win": final_win, "t_finish": t_finish, "finish": finish,
             "scale": scale, "map_times": map_times, "map_gap": map_gap,
             "fin_times": fin_times, "fin_gap": fin_gap,
             "fin_speed": fin_speed, "fin_zoom": fin_zoom}
+
+
+def pick_open_start(ta: Track, tb: Track, lap_start: float, t_finish: float, max_dist: float) -> float:
+    """Beginn des 3D-Anfangs: das OPEN_S-Fenster der Zielrunde mit dem kleinsten
+    Abstand – spannend, aber mindestens OPEN_END_MIN_S vor dem Ziel."""
+    latest = t_finish - OPEN_END_MIN_S - OPEN_S
+    starts = np.arange(lap_start, max(latest, lap_start) + 1e-9, 1.0)
+    if len(starts) == 0:
+        return max(lap_start, latest)
+    probe = np.arange(lap_start, latest + OPEN_S + 1e-9, 0.5)
+    g = np.array([live_gap(ta, tb, t, 5.0, max_dist) for t in probe])
+    score = []
+    for s0 in starts:
+        w = g[(probe >= s0) & (probe <= s0 + OPEN_S)]
+        w = w[~np.isnan(w)]
+        score.append(w.mean() if len(w) else np.inf)
+    return float(starts[int(np.argmin(score))])
 
 
 def _report(prep: dict) -> None:
@@ -294,12 +325,11 @@ def chart_frames(x: np.ndarray, blocks: list[tuple[int, int]]) -> list[tuple[str
 
 
 def frame_list(prep: dict) -> list[tuple]:
-    frames = [("hook", 0, 0.0)] * int(HOOK_S * FPS)
+    frames = [("open", i, 0.0) for i in range(len(prep["open_times"]))]
     frames += [("map", i, 0.0) for i in range(len(prep["map_times"]))]
     frames += chart_frames(prep["x"], prep["blocks"])
     frames += [("final", i, 0.0) for i in range(len(prep["fin_times"]))]
     frames += [("result", len(prep["fin_times"]) - 1, 0.0)] * int(RESULT_S * FPS)
-    frames += [("logo", 0, 0.0)] * int(LOGO_S * FPS)
     return frames
 
 
@@ -435,6 +465,21 @@ def render_race_story(data: dict, reel: dict, path: Path) -> Path:
     flash = fig.add_artist(plt.Rectangle((0, 0), 1, 1, transform=fig.transFigure, color=SC_YELLOW,
                                          alpha=0.0, zorder=20))
 
+    # ── 3D-Anfang ────────────────────────────────────────────────────────────
+    ax_3d = fig.add_axes([0, 0, 1, 1], zorder=-1)
+    hook_1, _, hook_2 = hook.partition(" – ")
+    open_txt = [fig.text(0.5, 0.925, hook_1, ha="center", va="center", fontsize=30 if len(hook_1) < 28 else 24,
+                         fontweight="bold", color=COLORS["text"]),
+                fig.text(0.5, 0.878, hook_2, ha="center", va="center", fontsize=30 if len(hook_2) < 28 else 24,
+                         fontweight="bold", color=COLORS["accent"]),
+                fig.text(0.5, 0.835, "FINAL LAP", ha="center", va="center", fontsize=14, fontweight="bold",
+                         color=COLORS["muted"])]
+    open_gap = fig.text(0.5, 0.11, "", ha="center", va="center", fontsize=44, fontweight="bold",
+                        color=COLORS["text"])
+    open_txt += [open_gap, fig.text(0.5, 0.07, f"{b} behind {a}", ha="center", va="center", fontsize=14,
+                                    color=COLORS["muted"])]
+    open_hist: list[float] = []
+
     # ── Texte ────────────────────────────────────────────────────────────────
     txt_big = fig.text(0.5, 0.885, "", ha="center", va="center", fontsize=44, fontweight="bold")
     txt_sub = fig.text(0.5, 0.835, "", ha="center", va="center", fontsize=15, color=COLORS["muted"])
@@ -456,7 +501,7 @@ def render_race_story(data: dict, reel: dict, path: Path) -> Path:
     txt_foot = fig.text(0.06, 0.245, "", ha="left", va="top", fontsize=7.5, color=COLORS["muted"])
 
     def visible(*shown) -> None:
-        for art in (ax_map, ax_zoom, ax_mini, ax_chart, *txt_legend, txt_tag):
+        for art in (ax_map, ax_zoom, ax_mini, ax_chart, ax_3d, *open_txt, *txt_legend, txt_tag):
             art.set_visible(art in shown)
         txt_banner.set_visible(False)
         flash.set_alpha(0.0)
@@ -553,17 +598,17 @@ def render_race_story(data: dict, reel: dict, path: Path) -> Path:
     def draw(phase: str, v, zoom: float) -> None:
         txt_center.set_text("")
         txt_center_sub.set_text("")
-        if phase in ("hook", "logo"):
-            visible()
+        if phase == "open":
+            visible(ax_3d, *open_txt)
             txt_big.set_text("")
             txt_sub.set_text("")
             txt_foot.set_text("")
-            if phase == "hook":
-                txt_center.set_text(f"{peak:.1f} s → {final:.3f} s")
-                txt_center_sub.set_text(hook)
-            else:
-                txt_center.set_text("STINTLAB")
-                txt_center_sub.set_text("F1 data, explained")
+            from stintlab.reels.chase3d import draw_scene
+            g = draw_scene(ax_3d, prep["scene"], prep["open_times"][v])
+            if np.isfinite(g):
+                open_hist.append(g)
+            recent = open_hist[-9:]      # geglättet, sonst flackern die Hundertstel
+            open_gap.set_text(_fmt_gap(float(np.mean(recent))) if recent else "")
             return
         if phase == "map":
             draw_map(v)

@@ -1,14 +1,18 @@
 """Reel „Ghost Lap“: zwei Fahrer fahren ihre schnellste Runde gleichzeitig.
 
-ABLAUF (1080 × 1920, 9:16, 60 Bilder/s, ~20 s) – mit replay = false entfällt
-die Zeitlupe und die Runde läuft stattdessen 14 s:
-  1. Haken (2 s):       große Zahl = Endabstand, darunter der Haken-Text
-  2. Runde (9 s):       ganze Streckenkarte, beide Punkte fahren synchron,
-                        ~10-fach beschleunigt; oben der laufende Abstand
+ABLAUF (1080 × 1920, 9:16, 60 Bilder/s, ~17 s) – mit replay = false entfällt
+die Zeitlupe und die Runde läuft stattdessen 12 s:
+  1. Anfang 3D (3,5 s): Verfolgerkamera (chase3d) an der Stelle, an der sich der
+                        Abstand am stärksten ändert (wie die Zeitlupe, oder open_at =
+                        Sekunde der Runde), Haken-Text groß oben. Ersetzt den
+                        schwarzen Titel-Screen: Baku 2026 wischten dort ~50 % in
+                        der ersten Sekunde weg.
+  2. Runde (7 s):       ganze Streckenkarte, beide Punkte fahren synchron,
+                        ~15-fach beschleunigt; oben der laufende Abstand
   3. Zeitlupe (5 s):    die Stelle, an der sich der Abstand am stärksten
                         verändert hat – im 160-m-Zoom, leicht verlangsamt
-  4. Auflösung (2,5 s): Ergebnis über der Karte
-  5. Logo (1 s)
+  4. Auflösung (1,5 s): Ergebnis über der Karte – kein Logo-Screen (dort fiel die
+                        Zuschauerkurve noch einmal ab)
 
 WARUM DIESE AUFTEILUNG: Bei 10-facher Geschwindigkeit legt ein Auto mit
 250 km/h pro Videobild über 10 m zurück. Auf der ganzen Karte (~2 m/Pixel)
@@ -50,7 +54,7 @@ from stintlab.session import _parse
 from stintlab.style import COLORS, resolve_font, team_color
 
 WIDTH_PX, HEIGHT_PX, DPI, FPS = 1080, 1920, 150, 60
-HOOK_S, LAP_S, REPLAY_S, RESULT_S, LOGO_S = 2.0, 9.0, 5.0, 2.5, 1.0
+OPEN_S, LAP_S, REPLAY_S, RESULT_S = 3.5, 7.0, 5.0, 1.5
 REPLAY_WINDOW_S = 4.0  # so viele echte Sekunden zeigt die Zeitlupe (5 s Video → 0,8-fach)
 TRAIL_S = 2.0          # Schweif hinter den Punkten, in echten Sekunden
 ZOOM_M = 160.0         # Breite des Zoom-Ausschnitts in Metern
@@ -181,13 +185,25 @@ def replay_from_config(prep: dict, reel: dict, lap_time: float) -> float:
     return replay_start(prep, lap_time)
 
 
-def frame_times(lap_time: float, replay_from: float | None) -> list[tuple[str, float]]:
+def open_from_config(reel: dict, replay_from: float | None, prep: dict, lap_time: float) -> float:
+    """Beginn des 3D-Anfangs in Sekunden der Runde von A: open_at, sonst kurz
+    vor der Stelle der Zeitlupe (bzw. der stärksten Abstandsänderung)."""
+    if reel.get("open_at") is not None:
+        start = float(reel["open_at"])
+    else:
+        start = (replay_from if replay_from is not None else replay_start(prep, lap_time)) - 0.5
+    return float(np.clip(start, 0.0, max(lap_time - OPEN_S, 0.0)))
+
+
+def frame_times(lap_time: float, replay_from: float | None,
+                open_from: float | None = None) -> list[tuple[str, float]]:
     """[(Phase, Rundenzeit in s), ...] – ein Eintrag pro Videobild.
 
     replay_from = None: keine Zeitlupe – die Runde bekommt deren Zeit dazu und
     läuft langsamer (Gesamtlänge bleibt gleich).
+    open_from = None: ohne 3D-Anfang (z. B. in Tests ohne Positionsdaten).
     """
-    frames = [("hook", 0.0)] * int(HOOK_S * FPS)
+    frames = [] if open_from is None else [("open", open_from + i / FPS) for i in range(int(OPEN_S * FPS))]
     n = int((LAP_S if replay_from is not None else LAP_S + REPLAY_S) * FPS)
     frames += [("lap", lap_time * i / (n - 1)) for i in range(n)]
     if replay_from is not None:
@@ -195,7 +211,6 @@ def frame_times(lap_time: float, replay_from: float | None) -> list[tuple[str, f
         end = min(replay_from + REPLAY_WINDOW_S, lap_time)
         frames += [("replay", replay_from + (end - replay_from) * i / (n - 1)) for i in range(n)]
     frames += [("result", lap_time)] * int(RESULT_S * FPS)
-    frames += [("logo", lap_time)] * int(LOGO_S * FPS)
     return frames
 
 
@@ -241,6 +256,9 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
         raise ValueError("replay muss true oder false sein (klein geschrieben, ohne Anführungszeichen)")
     rep_from = replay_from_config(prep, reel, lap_a) if with_replay else None
     rep_to = min(rep_from + REPLAY_WINDOW_S, lap_a) if with_replay else None
+    open_from = open_from_config(reel, rep_from, prep, lap_a)
+    from stintlab.reels.chase3d import Scene, draw_scene
+    scene = Scene(data, drv_a, drv_b, t0s={d: lap["LapStart"] for d, lap in zip(prep["drivers"], prep["laps"])})
 
     plt.rcParams["font.family"] = "sans-serif"
     plt.rcParams["font.sans-serif"] = [resolve_font()]
@@ -294,6 +312,20 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
     cursor = ax_gap.axvline(0, color=COLORS["accent"], linewidth=1.2, visible=False)
     gap_fills = []
 
+    # ── 3D-Anfang ────────────────────────────────────────────────────────────
+    ax_3d = fig.add_axes([0, 0, 1, 1], zorder=-1)
+    hook_1, _, hook_2 = hook.partition(" – ")
+    open_txt = [fig.text(0.5, 0.925, hook_1, ha="center", va="center", fontsize=30 if len(hook_1) < 28 else 24,
+                         fontweight="bold", color=COLORS["text"]),
+                fig.text(0.5, 0.878, hook_2, ha="center", va="center", fontsize=30 if len(hook_2) < 28 else 24,
+                         fontweight="bold", color=COLORS["accent"]),
+                fig.text(0.5, 0.835 if hook_2 else 0.878, "POLE LAP · Q3" if is_pole else "FASTEST LAPS",
+                         ha="center", va="center", fontsize=14, fontweight="bold", color=COLORS["muted"])]
+    open_gap = fig.text(0.5, 0.11, "", ha="center", va="center", fontsize=44, fontweight="bold",
+                        color=COLORS["text"])
+    open_txt += [open_gap, fig.text(0.5, 0.07, f"{drv_b} behind {drv_a} · same lap time", ha="center",
+                                    va="center", fontsize=14, color=COLORS["muted"])]
+
     # ── Texte ────────────────────────────────────────────────────────────────
     txt_big = fig.text(0.5, 0.88, "", ha="center", va="center", fontsize=40, fontweight="bold")
     txt_sub = fig.text(0.5, 0.835, "", ha="center", va="center", fontsize=15, color=COLORS["muted"])
@@ -307,11 +339,13 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
                           color=COLORS["accent"])
     txt_center_sub = fig.text(0.5, 0.52, "", ha="center", va="center", fontsize=18, color=COLORS["muted"])
     fig.text(0.94, 0.965, "STINTLAB", ha="right", va="center", fontsize=11, fontweight="bold", color=COLORS["accent"])
-    fig.text(0.06, 0.215, "Data: OpenF1 · positions ~4 Hz", ha="left", va="top", fontsize=8, color=COLORS["muted"])
+    txt_data = fig.text(0.06, 0.215, "Data: OpenF1 · positions ~4 Hz", ha="left", va="top", fontsize=8,
+                        color=COLORS["muted"])
 
     def visible(*shown) -> None:
-        for art in (ax_map, ax_zoom, ax_mini, ax_gap, txt_leg_a, txt_leg_b, txt_tag):
+        for art in (ax_map, ax_zoom, ax_mini, ax_gap, ax_3d, *open_txt, txt_leg_a, txt_leg_b, txt_tag):
             art.set_visible(art in shown)
+        txt_data.set_visible(ax_3d not in shown)   # über der 3D-Strecke würde die Zeile stören
 
     def place(key: str, t: float) -> list:
         ax, trails, dots = layers[key]
@@ -346,12 +380,13 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
     def draw(phase: str, t: float) -> None:
         txt_center.set_text("")
         txt_center_sub.set_text("")
-        if phase in ("hook", "logo"):
-            visible()
+        if phase == "open":
+            visible(ax_3d, *open_txt)
             txt_big.set_text("")
             txt_sub.set_text("")
-            txt_center.set_text(f"{prep['gap']:.3f} s" if phase == "hook" else "STINTLAB")
-            txt_center_sub.set_text(hook if phase == "hook" else "F1 data, explained")
+            draw_scene(ax_3d, scene, t)
+            g = gap_at(prep, t)      # Abstand aus der Telemetrie, wie im Rest des Reels
+            open_gap.set_text(f"{abs(g):.2f} s")
             return
         if phase == "lap":
             visible(ax_map, ax_gap, txt_leg_a, txt_leg_b)
@@ -394,7 +429,7 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
                                     extra_args=["-pix_fmt", "yuv420p", "-crf", "20"])
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    frames = frame_times(lap_a, rep_from)
+    frames = frame_times(lap_a, rep_from, open_from)
     step = max(len(frames) // 10, 1)
     with writer.saving(fig, str(path), dpi=DPI):
         last = None

@@ -14,6 +14,8 @@ import sys
 import tomllib
 from pathlib import Path
 
+from matplotlib import pyplot as plt
+
 from stintlab.analyses.results import pit_notes, result_mismatches
 from stintlab.quali import quali_mismatches
 from stintlab.registry import ANALYSES, REELS
@@ -25,10 +27,18 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("config", help="Pfad zur post.toml")
     parser.add_argument("--refresh", action="store_true", help="Cache ignorieren, neu laden")
+    parser.add_argument("--keep-going", action="store_true",
+                        help="Bei einer fehlerhaften Slide weitermachen statt abzubrechen")
     args = parser.parse_args()
+    build(Path(args.config), args.refresh, args.keep_going)
 
-    config_file = Path(args.config)
+
+def build(config_file: Path, refresh: bool = False, keep_going: bool = False) -> list[str]:
+    """Alle Slides und Reels einer post.toml erzeugen. Gibt die Fehler zurück
+    (nur mit keep_going – sonst bricht der erste Fehler ab)."""
+    config_file = Path(config_file)
     config = tomllib.loads(config_file.read_text(encoding="utf-8"))
+    failed: list[str] = []
     session = config["session"]
     if not session.get("meeting_key"):
         sys.exit("In der post.toml fehlt meeting_key.")
@@ -52,7 +62,7 @@ def main() -> None:
     # Jede benötigte Session genau einmal laden
     sessions = {}
     for stype in {item.get("session", session["type"]) for item in config["slides"] + reels}:
-        sessions[stype] = load_session(session["meeting_key"], stype, refresh=args.refresh)
+        sessions[stype] = load_session(session["meeting_key"], stype, refresh=refresh)
 
     # Plausibilitätstest: Passt der gezeichnete Abstand zu den Positionsdaten?
     for slide in config["slides"]:
@@ -85,18 +95,33 @@ def main() -> None:
 
     out_dir = config_file.parent / "slides"
     for i, slide in enumerate(config["slides"], start=1):
-        fig, ax = new_slide(slide["title"], slide.get("subtitle", ""))
-        ANALYSES[slide["analysis"]]["render"](ax, sessions[slide.get("session", session["type"])], slide)
         filename = f"{i:02d}_{slide['analysis']}.png"
-        path = save_slide(fig, out_dir / filename)
-        print(f"✓ {path}")
+        try:
+            fig, ax = new_slide(slide["title"], slide.get("subtitle", ""))
+            ANALYSES[slide["analysis"]]["render"](ax, sessions[slide.get("session", session["type"])], slide)
+            path = save_slide(fig, out_dir / filename)
+            print(f"✓ {path}")
+        except Exception as exc:
+            if not keep_going:
+                raise
+            plt.close("all")
+            failed.append(f"{filename}: {exc}")
+            print(f"✗ {filename} übersprungen: {exc}")
 
     for i, reel in enumerate(reels, start=1):
         filename = f"reel_{i:02d}_{reel['analysis']}.mp4"
         print(f"… rendere {filename} (dauert etwa eine Minute)")
-        path = REELS[reel["analysis"]](sessions[reel.get("session", session["type"])], reel,
-                                       out_dir / filename)
-        print(f"✓ {path}")
+        try:
+            path = REELS[reel["analysis"]](sessions[reel.get("session", session["type"])], reel,
+                                           out_dir / filename)
+            print(f"✓ {path}")
+        except Exception as exc:
+            if not keep_going:
+                raise
+            plt.close("all")
+            failed.append(f"{filename}: {exc}")
+            print(f"✗ {filename} übersprungen: {exc}")
+    return failed
 
 
 if __name__ == "__main__":
