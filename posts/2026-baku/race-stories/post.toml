@@ -1,0 +1,31 @@
+# Tiefere Rennanalyse Baku: die Geschichten hinter dem Sieg – Antonelli +11, Piastri –11
+[session]
+meeting_key = 1295
+type = "R"
+
+[[slides]]
+analysis = "positions"
+drivers  = ["ANT", "PIA"]
+title    = "+11 AND –11: THE OTHER STORIES OF BAKU"
+subtitle = "Position after every lap · Antonelli from grid 16 to P5, Piastri from grid 3 to P14"
+
+[[slides]]
+analysis = "gap_between"
+drivers  = ["LEC", "ANT"]
+laps     = [39, 51]
+title    = "ANTONELLI RAN OUT OF LAPS"
+subtitle = "Gap Leclerc → Antonelli after the restart · 3.5 s on lap 42, 0.38 s at the flag"
+
+[[slides]]
+analysis = "positions"
+drivers  = ["PIA"]
+laps     = [35, 51]
+title    = "PIASTRI: P3 TO P15 IN ONE LAP"
+subtitle = "Lap 40: +10 s in sector 1 – lap deleted for track limits at Turn 1"
+
+[[slides]]
+analysis = "driver_pace"
+laps     = [41, 50]
+min_laps = 8
+title    = "FINAL STINT: ANTONELLI 3RD FASTEST, PIASTRI 2 S OFF"
+subtitle = "Clean laps 41–50 · Piastri ran in the midfield pack, so traffic is part of his number"

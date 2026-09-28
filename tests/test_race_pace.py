@@ -52,3 +52,10 @@ def test_sc_laps_of_leader_are_excluded_for_lapped_driver_too():
 def test_short_team_names_are_used():
     from stintlab.analyses.race_pace import SHORT_TEAM
     assert SHORT_TEAM["Red Bull Racing"] == "Red Bull" and SHORT_TEAM["Haas F1 Team"] == "Haas"
+
+
+def test_lap_window_keeps_only_laps_inside():
+    laps, ends = race("VER", [110.0, 100.0, 100.2, 100.4, 100.1, 99.9])
+    clean, stats = clean_laps({"laps": laps, "lap_ends": {"VER": ends}, "race_control": []}, laps=(4, 6))
+    assert clean["VER"] == [100.4, 100.1, 99.9]
+    assert stats["total"] == 3

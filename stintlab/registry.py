@@ -13,10 +13,13 @@ from stintlab.analyses.ideal_lap import render_ideal_lap
 from stintlab.analyses.lap_times import render_lap_times
 from stintlab.analyses.long_runs import render_long_runs
 from stintlab.analyses.pit_cycle import render_pit_cycle
+from stintlab.analyses.positions import render_positions
 from stintlab.analyses.race_pace import render_driver_pace, render_team_pace
 from stintlab.analyses.results import render_results
 from stintlab.analyses.sectors import render_sectors
 from stintlab.analyses.speed import render_speed_vs_sector, render_top_speed
+from stintlab.reels.gap_chase import render_gap_chase
+from stintlab.reels.race_story import render_race_story
 from stintlab.reels.ghost_lap import render_ghost_lap
 from stintlab.analyses.telemetry import render_telemetry
 
@@ -84,8 +87,19 @@ def _min_laps(slide):
     return n
 
 
+def _laps_window(slide):
+    laps = slide.get("laps")
+    if laps is not None and len(laps) != 2:
+        raise ValueError("laps braucht genau zwei Werte, z. B. laps = [41, 50]")
+    return tuple(laps) if laps else None
+
+
 def _driver_pace(ax, data, slide):
-    render_driver_pace(ax, data, _min_laps(slide))
+    render_driver_pace(ax, data, _min_laps(slide), _laps_window(slide))
+
+
+def _positions(ax, data, slide):
+    render_positions(ax, data, slide.get("drivers") or None, _laps_window(slide))
 
 
 def _team_pace(ax, data, slide):
@@ -114,6 +128,7 @@ ANALYSES = {
     "sectors": {"render": _sectors, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
     "telemetry": {"render": _telemetry, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
     "driver_pace": {"render": _driver_pace, "sessions": {"R", "S"}},
+    "positions": {"render": _positions, "sessions": {"R", "S"}},
     "top_speed": {"render": _top_speed, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "speed_vs_sector": {"render": _speed_vs_sector, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "team_pace": {"render": _team_pace, "sessions": {"R", "S"}},
@@ -122,4 +137,6 @@ ANALYSES = {
 # Reels (Videos 9:16) – in der post.toml unter [[reels]]
 REELS = {
     "ghost_lap": render_ghost_lap,
+    "gap_chase": render_gap_chase,
+    "race_story": render_race_story,
 }

@@ -59,8 +59,14 @@ def restricted_windows(data: dict) -> list[tuple]:
     return windows
 
 
-def clean_laps(data: dict) -> tuple[dict[str, list[float]], dict[str, int]]:
-    """({Fahrer: [saubere Rundenzeiten]}, {Ausschlussgrund: Anzahl})."""
+def clean_laps(data: dict, laps: tuple[int, int] | None = None
+               ) -> tuple[dict[str, list[float]], dict[str, int]]:
+    """({Fahrer: [saubere Rundenzeiten]}, {Ausschlussgrund: Anzahl}).
+
+    laps: optionales Fenster (erste, letzte Runde), z. B. (41, 50) für den
+          Schlussstint. Runden außerhalb zählen gar nicht mit, auch nicht in
+          der Statistik.
+    """
     windows = restricted_windows(data)
     pit_laps = {(p["driver"], p["lap"]) for p in data.get("pit_stops", []) if p.get("lap")}
     stats = {"total": 0, "lap 1": 0, "pit": 0, "SC/VSC/red": 0, "outlier": 0}
@@ -68,8 +74,10 @@ def clean_laps(data: dict) -> tuple[dict[str, list[float]], dict[str, int]]:
     for lap in data.get("laps", []):
         if not lap.get("LapTime") or lap.get("LapNumber") is None:
             continue
-        stats["total"] += 1
         drv, num = lap["Driver"], lap["LapNumber"]
+        if laps and not (laps[0] <= num <= laps[1]):
+            continue
+        stats["total"] += 1
         if num == 1:
             stats["lap 1"] += 1
             continue
@@ -101,8 +109,9 @@ def _lap_axis(ax) -> None:
     ax.xaxis.set_major_formatter(lambda x, _: _fmt(x))
 
 
-def render_driver_pace(ax, data: dict, min_laps: int = MIN_CLEAN_LAPS) -> list[tuple[str, float]]:
-    clean, stats = clean_laps(data)
+def render_driver_pace(ax, data: dict, min_laps: int = MIN_CLEAN_LAPS,
+                       laps: tuple[int, int] | None = None) -> list[tuple[str, float]]:
+    clean, stats = clean_laps(data, laps)
     _report(stats, clean)
     rows = sorted(((d, t) for d, t in clean.items() if len(t) >= min_laps), key=lambda x: median(x[1]))
     if not rows:
@@ -138,6 +147,8 @@ def render_driver_pace(ax, data: dict, min_laps: int = MIN_CLEAN_LAPS) -> list[t
     ax.set_xlabel("Clean race laps (box = middle 50 %, line = median)")
 
     notes = ["Excluded: lap 1, pit laps, SC/VSC/red flag, laps over 107 % of own best"]
+    if laps:
+        notes.insert(0, f"Laps {laps[0]}–{laps[1]} only")
     if too_few:
         notes.insert(0, f"Fewer than {min_laps} clean laps: " + ", ".join(too_few))
     ax.set_ylim(len(rows) - 0.5 + 0.55 * len(notes) + 0.3, -0.6)
