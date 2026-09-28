@@ -1,0 +1,11 @@
+# Reels Zandvoort 2026 · qualifying – angelegt von weekend.py
+# hook: Zeile 1 – Zeile 2 (wird am „ – “ geteilt). open_at = Stelle des 3D-Anfangs (siehe Reel-Doku)
+[session]
+meeting_key = 1292
+type = "Q"
+
+[[reels]]
+analysis = "ghost_lap"
+part = "Q3"
+hook     = "Where Norris found 0.1 s"   # TODO schärfen
+result   = "Norris on pole by 0.102 s"

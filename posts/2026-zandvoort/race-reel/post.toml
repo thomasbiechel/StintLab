@@ -1,0 +1,10 @@
+# Reels Zandvoort 2026 · race – angelegt von weekend.py
+# hook: Zeile 1 – Zeile 2 (wird am „ – “ geteilt). open_at = Stelle des 3D-Anfangs (siehe Reel-Doku)
+[session]
+meeting_key = 1292
+type = "R"
+
+[[reels]]
+analysis = "race_story"
+hook     = "Norris's race – how it was decided"   # TODO schärfen
+result   = "Norris wins by 11.536 s"

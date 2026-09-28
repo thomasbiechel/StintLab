@@ -1,0 +1,15 @@
+# British Grand Prix 2026 · Silverstone · sprint – angelegt von weekend.py
+# Titel mit TODO selbst formulieren, dann: python weekend.py <ort> S
+[session]
+meeting_key = 1289
+type = "S"
+
+[[slides]]
+analysis = "results"
+title    = "ANTONELLI WINS BY 2.745 S"
+subtitle = "Official sprint classification · +/– = places vs. starting grid"
+
+[[slides]]
+analysis = "driver_pace"
+title    = "TITLE TODO"   # TODO
+subtitle = "Clean sprint laps only · traffic affects the numbers"

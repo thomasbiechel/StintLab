@@ -22,6 +22,7 @@ from stintlab.analyses.sector_delta import render_sector_delta
 from stintlab.analyses.speed import render_speed_vs_sector, render_top_speed
 from stintlab.reels.gap_chase import render_gap_chase
 from stintlab.reels.race_story import render_race_story
+from stintlab.reels.comeback import render_comeback
 from stintlab.reels.ghost_lap import render_ghost_lap
 from stintlab.analyses.telemetry import render_telemetry
 from stintlab.analyses.tow_effect import render_tow_effect
@@ -163,4 +164,5 @@ REELS = {
     "ghost_lap": render_ghost_lap,
     "gap_chase": render_gap_chase,
     "race_story": render_race_story,
+    "comeback": render_comeback,
 }

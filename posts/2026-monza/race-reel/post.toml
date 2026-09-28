@@ -8,3 +8,10 @@ type = "R"
 analysis = "race_story"
 hook     = "Antonelli's race – how it was decided"   # TODO schärfen
 result   = "Antonelli wins by 3.857 s"
+
+[[reels]]
+analysis = "comeback"
+drivers  = ["ANT"]
+# hook/result optional – Standard aus den Daten:
+# hook   = "P19 → P1 – 22 overtakes on track"
+# pass   = { lap = 50, rival = "RUS" }   # Standard: das Manöver auf den Zielplatz

@@ -1,0 +1,29 @@
+# Dutch Grand Prix 2026 · Zandvoort · qualifying – angelegt von weekend.py
+# Titel mit TODO selbst formulieren, dann: python weekend.py <ort> Q
+[session]
+meeting_key = 1292
+type = "Q"
+
+[[slides]]
+analysis = "results"
+title    = "NORRIS ON POLE BY 0.102 S"
+subtitle = "Official qualifying classification · fastest time in each part in purple"
+
+[[slides]]
+analysis = "telemetry"
+part = "Q3"
+title    = "WHERE NORRIS FOUND 0.1 S"
+subtitle = "Fastest Q3 laps of the top two · speed and gap over the lap"
+
+[[slides]]
+analysis = "ideal_lap"
+part = "Q3"
+view = "both"
+title    = "TITLE TODO"   # TODO
+subtitle = "Each Q3 driver's best sectors added up vs. the pole lap"
+
+[[slides]]
+analysis = "sectors"
+part = "Q3"
+title    = "TITLE TODO"   # TODO
+subtitle = "Each Q3 driver's best valid sector time"

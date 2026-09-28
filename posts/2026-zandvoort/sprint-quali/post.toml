@@ -1,0 +1,16 @@
+# Dutch Grand Prix 2026 · Zandvoort · sprint qualifying – angelegt von weekend.py
+# Titel mit TODO selbst formulieren, dann: python weekend.py <ort> SQ
+[session]
+meeting_key = 1292
+type = "SQ"
+
+[[slides]]
+analysis = "results"
+title    = "RUSSELL ON POLE BY 0.041 S"
+subtitle = "Official sprint qualifying classification"
+
+[[slides]]
+analysis = "ideal_lap"
+view = "both"
+title    = "TITLE TODO"   # TODO
+subtitle = "Each driver's best sectors added up vs. the fastest lap"

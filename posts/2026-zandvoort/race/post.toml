@@ -1,0 +1,20 @@
+# Dutch Grand Prix 2026 · Zandvoort · race – angelegt von weekend.py
+# Titel mit TODO selbst formulieren, dann: python weekend.py <ort> R
+[session]
+meeting_key = 1292
+type = "R"
+
+[[slides]]
+analysis = "results"
+title    = "NORRIS WINS BY 11.536 S"
+subtitle = "Official race classification · +/– = places vs. starting grid"
+
+[[slides]]
+analysis = "driver_pace"
+title    = "TITLE TODO"   # TODO
+subtitle = "Clean race laps only · strategy and traffic affect the numbers"
+
+[[slides]]
+analysis = "team_pace"
+title    = "TITLE TODO"   # TODO
+subtitle = "Median of both drivers' clean race laps"

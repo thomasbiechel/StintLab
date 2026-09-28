@@ -33,10 +33,12 @@ OUTLINE = [(2.95, 0.10), (2.5, 0.16), (1.9, 0.22), (1.2, 0.28), (0.75, 0.42), (0
 
 
 class Scene:
-    def __init__(self, data: dict, a: str, b: str, t0s: dict | None = None):
+    def __init__(self, data: dict, a: str, b: str, t0s: dict | None = None, ref: str | None = None):
         """t0s: Nullpunkt der Zeit je Fahrer. Standard (Rennen): für beide der
         Start des Rennens – beide Autos zur selben Uhrzeit. Ghost Lap: der Beginn
-        der jeweils eigenen Runde – beide Autos zur selben verstrichenen Rundenzeit."""
+        der jeweils eigenen Runde – beide Autos zur selben verstrichenen Rundenzeit.
+        ref: Fahrer für Maßstab und Streckenumriss (Standard a). Beim Comeback-Reel
+        ist das der Verfolger – seine Telemetrie liegt sicher im Cache."""
         self.a, self.b = a, b
         ends = data["lap_ends"]
         self.t0 = ends[a][min(ends[a])] if t0s is None else t0s[a]
@@ -45,12 +47,13 @@ class Scene:
                openf1.cached_fetch_driver("location", data["session_key"], data["numbers"][d]) for d in (a, b)}
         self.ta = Track(loc[a], self.t0s[a], rotate=False)
         self.tb = Track(loc[b], self.t0s[b], rotate=False)
-        ref = reference_lap(data, a)
-        self.scale = units_per_metre(data, a, ref, self.ta, self.t0s[a])
+        rd = ref or a
+        lap = reference_lap(data, rd)
+        self.scale = units_per_metre(data, rd, lap, self.ta if rd == a else self.tb, self.t0s[rd])
         self.z = {d: self._zfun(loc[d], self.t0s[d]) for d in (a, b)}
-        rs = (ref["LapStart"] - self.t0s[a]).total_seconds()
-        tt = np.linspace(rs, rs + float(ref["LapTime"]), 3000)
-        P = self.world(a, tt)
+        rs = (lap["LapStart"] - self.t0s[rd]).total_seconds()
+        tt = np.linspace(rs, rs + float(lap["LapTime"]), 3000)
+        P = self.world(rd, tt)
         self.z_off = P[:, 2].min()
         P[:, 2] -= self.z_off
         P[:, 2] = np.convolve(np.pad(P[:, 2], 30, mode="wrap"), np.ones(61) / 61, mode="same")[30:-30]
@@ -164,7 +167,9 @@ def draw_car(ax, cam: Camera, pos, fw, col, name, z):
     cx, cy, _ = cam.proj(pos + [0, 0, 0.5 * CAR])
     lx, ly = cx[0] + 0.13, cy[0] + 0.02
     ax.plot([cx[0], lx - 0.01], [cy[0], ly], color=col, linewidth=1.2, zorder=z + 1)
-    ax.text(lx, ly, name, fontsize=13, fontweight="bold", color="white", ha="left", va="center", zorder=z + 1,
+    r, g, b = to_rgb(col)
+    label_ink = "black" if 0.299 * r + 0.587 * g + 0.114 * b > 0.6 else "white"   # weißes Auto → schwarze Schrift
+    ax.text(lx, ly, name, fontsize=13, fontweight="bold", color=label_ink, ha="left", va="center", zorder=z + 1,
             bbox={"boxstyle": "round,pad=0.28", "facecolor": col, "edgecolor": "none"})
 
 
