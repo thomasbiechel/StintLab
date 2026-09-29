@@ -11,3 +11,8 @@ track_lap = 1          # Standard: Runde vor dem ersten Safety Car (hier 30)
 # final_window = 52      # Sekunden vor dem Ziel in der Zielrunde, Standard: halbe Runde
 hook     = "Russell's 12-second lead – gone in one safety car"
 result   = "Russell holds on by 0.196 s"
+
+[reels.cover]
+title  = "Russell holds on"
+kicker = "Baku race story"
+sub    = "12 s lead gone in one safety car – won by 0.196 s"

@@ -147,3 +147,25 @@ def test_preview_toml_old_track_is_back_not_new():
     assert cfg["slides"][0]["title"] == "Kuala Lumpur is back after 9 years"
     assert "Jolpica" in cfg["slides"][0]["source"]
     assert "2017 is too long ago" in cfg["slides"][3]["subtitle"]
+
+
+def test_geojson_layout_in_metres_with_length():
+    raw = {"features": [{"properties": {"length": 5543}, "geometry": {"type": "LineString", "coordinates": [
+        [101.735, 2.760], [101.745, 2.760], [101.745, 2.770], [101.735, 2.770]]}}]}
+    lay = pv.layout_from_geojson(raw)
+    assert lay["source"] == "geojson" and lay["length_m"] == 5543 and lay["corners"] == []
+    assert max(lay["x"]) - min(lay["x"]) == pytest.approx(1112, rel=0.01)     # 0,01° Länge am Äquator ≈ 1,1 km
+
+
+def test_corner_labels_pushed_apart():
+    from stintlab.analyses.preview import spread_labels
+    (a, b, c) = spread_labels([(0, 0), (0.1, 0), (5, 5)], min_dist=1.0)
+    assert abs(b[0] - a[0]) >= 0.99 and c == (5.0, 5.0)
+
+
+def test_preview_toml_credits_geojson_track():
+    from preview import preview_toml
+    data = {"history": {"year": 2017, "source": "jolpica", "track_pace": {}}, "layout": {"source": "geojson"},
+            "races": [], "form": {}, "chances": []}
+    cfg = tomllib.loads(preview_toml({"meeting_key": 1308, "location": "Kuala Lumpur", "year": 2026}, data))
+    assert cfg["slides"][0]["source"] == "Data: OpenF1 · Jolpica-F1 · f1-circuits"

@@ -378,6 +378,11 @@ def render_race_story(data: dict, reel: dict, path: Path) -> Path:
     hook = reel.get("hook") or f"{a}'s lead – and what the {first_name} did to it"
     result = reel.get("result") or f"{a} holds on by {final:.3f} s"
     blocks = prep["blocks"]
+    # Titelbild: Mitte des 3D-Anfangs (Schlussphase, beide Autos im Bild)
+    from stintlab.reels.cover import last_name, make_cover, session_meta
+    make_cover(reel, path, prep["scene"], float(prep["open_times"][len(prep["open_times"]) // 2]),
+               f"{last_name(data, a)} holds on", kicker="Race story",
+               sub=f"{final:.3f} s ahead of {last_name(data, b)} at the flag", meta=session_meta(data))
 
     plt.rcParams["font.family"] = "sans-serif"
     plt.rcParams["font.sans-serif"] = [resolve_font()]

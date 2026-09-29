@@ -1,0 +1,262 @@
+From b3f10d81c348b1851673ff894369ab1ae8c47ef7 Mon Sep 17 00:00:00 2001
+From: Thomas Biechel <thomas.biechel07@gmail.com>
+Date: Tue, 29 Sep 2026 08:24:40 +0200
+Subject: [PATCH] tow_split: Windschatten vs. Overtake Mode vs. Restart trennen
+
+Neue Analyse tow_split (Balken pro Gruppe) auf Basis von tow_effect.
+Messlinie per Proxy (Abstand am Rundenbeginn), ueberschreibbar mit
+detection_gaps. tow_effect selbst unveraendert, 4 neue Tests.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01McKkXHjPn3myfMMJPakDRq
+---
+ stintlab/analyses/tow_effect.py | 106 ++++++++++++++++++++++++++++++--
+ stintlab/registry.py            |   3 +-
+ tests/test_tow_effect.py        |  64 +++++++++++++++++++
+ 3 files changed, 167 insertions(+), 6 deletions(-)
+
+diff --git a/stintlab/analyses/tow_effect.py b/stintlab/analyses/tow_effect.py
+index ea57cce..eafa0d1 100644
+--- a/stintlab/analyses/tow_effect.py
++++ b/stintlab/analyses/tow_effect.py
+@@ -16,6 +16,23 @@ METHODE, pro grüner Runde jedes Fahrers:
+ 
+ GRENZE: Enthält alles, was hinter einem Auto passiert – Windschatten UND
+ z. B. den Overtake Mode, der erst innerhalb einer Sekunde freigeschaltet wird.
++Die Aufteilung dazu macht compute_tow_split / render_tow_split (unten).
++
++AUFTEILUNG (tow_split): Der Overtake Mode wird an EINER Messlinie
++entschieden (≤ 1 s → frei), der Windschatten wirkt überall. Runden mit
++Auto ≤ 1 s davor an der Speed Trap werden deshalb getrennt nach:
++- "mode":    auch an der Messlinie ≤ 1 s → Windschatten + Overtake Mode
++- "tow":     an der Messlinie > 1 s, erst danach herangekommen → nur Windschatten
++- "restart": erste grüne Runde nach SC/VSC/roter Flagge – der Modus ist dann
++             vermutlich noch gesperrt (wie früher DRS). IM REGLEMENT PRÜFEN.
++             Eigene Gruppe, weil kalte Reifen/Pulk die Werte verzerren können.
++Differenz "mode" minus "tow" ≈ Anteil des Overtake Mode.
++
++MESSLINIE = PROXY: Die Position der Messlinie steckt nicht in den Daten.
++Standard ist der Abstand an der Ziellinie am BEGINN der Runde
++(detection_gaps kann echte Werte pro (Fahrer, Runde) liefern, z. B. aus
++gap_on_lap an der Messlinie). Wie gut der Proxy ist, hängt von der Strecke
++ab – kleine Gruppen (n < MIN_GROUP) werden grau und als unsicher markiert.
+ """
+ 
+ from __future__ import annotations
+@@ -32,10 +49,15 @@ FREE_AIR_S = 3.0
+ MIN_FREE = 5
+ MAX_GAP_S = 5.0
+ BINS = [(0, 0.5), (0.5, 1), (1, 1.5), (1.5, 2), (2, 3), (3, 5)]
++MODE_GAP_S = 1.0      # Freischaltgrenze Overtake Mode
++MIN_GROUP = 8         # darunter gilt eine Gruppe als unsicher
++GROUPS = [("mode", "Tow + overtake mode"), ("tow", "Tow only\n(>1 s at detection)"),
++          ("restart", "Restart lap\n(mode locked?)")]
+ 
+ 
+-def compute_tow_effect(data: dict) -> list[dict]:
+-    """[{driver, lap, gap, delta}] für alle Fahrer mit Basislinie."""
++def _laps_with_gaps(data: dict) -> list[dict]:
++    """Alle auswertbaren Runden mit Abstand an der Linie am Ende ("gap") und am
++    Beginn der Runde ("gap_start"); "restart" = erste grüne Runde nach SC/VSC/RED."""
+     restricted = restricted_laps(data.get("race_control", []))
+     pit = {(p["driver"], p["lap"]) for p in data.get("pit_stops", [])}
+     lap_ends = data.get("lap_ends", {})
+@@ -53,21 +75,55 @@ def compute_tow_effect(data: dict) -> list[dict]:
+         drv, n, st = lap.get("Driver"), lap.get("LapNumber"), lap.get("SpeedST")
+         if not st or n is None or n < 2 or lap.get("IsPitOutLap"):
+             continue
+-        if n in restricted or n - 1 in restricted or (drv, n) in pit or (drv, n - 1) in pit:
++        if n in restricted or (drv, n) in pit or (drv, n - 1) in pit:
+             continue
+         end = lap_ends.get(drv, {}).get(n)
+         if end is None:
+             continue
+-        pts.append({"driver": drv, "lap": n, "gap": gap_ahead(drv, end), "speed": float(st)})
++        start = lap_ends.get(drv, {}).get(n - 1)
++        pts.append({"driver": drv, "lap": n, "gap": gap_ahead(drv, end),
++                    "gap_start": gap_ahead(drv, start) if start is not None else float("inf"),
++                    "speed": float(st), "restart": n - 1 in restricted})
++    return pts
++
+ 
++def _with_baseline(pts: list[dict]) -> list[dict]:
++    """Basislinie = Median in freier Fahrt, nur aus normalen Runden (kein Restart)."""
+     base = {}
+     for drv in {p["driver"] for p in pts}:
+-        free = [p["speed"] for p in pts if p["driver"] == drv and p["gap"] > FREE_AIR_S]
++        free = [p["speed"] for p in pts if p["driver"] == drv and p["gap"] > FREE_AIR_S and not p["restart"]]
+         if len(free) >= MIN_FREE:
+             base[drv] = median(free)
+     return [{**p, "delta": p["speed"] - base[p["driver"]]} for p in pts if p["driver"] in base]
+ 
+ 
++def compute_tow_effect(data: dict) -> list[dict]:
++    """[{driver, lap, gap, delta, ...}] für alle Fahrer mit Basislinie (ohne Restart-Runden)."""
++    return [p for p in _with_baseline(_laps_with_gaps(data)) if not p["restart"]]
++
++
++def compute_tow_split(data: dict, detection_gaps: dict | None = None) -> dict[str, dict]:
++    """{Gruppe: {"median", "n", "deltas"}} für "free", "mode", "tow", "restart".
++
++    detection_gaps: optional {(Fahrer, Runde): Abstand an der Messlinie} –
++    ersetzt den Proxy (Abstand an der Ziellinie am Rundenbeginn)."""
++    detection_gaps = data.get("detection_gaps", {}) if detection_gaps is None else detection_gaps
++    groups: dict[str, list[float]] = {"free": [], "mode": [], "tow": [], "restart": []}
++    for p in _with_baseline(_laps_with_gaps(data)):
++        if p["gap"] > FREE_AIR_S and not p["restart"]:
++            groups["free"].append(p["delta"])
++            continue
++        if p["gap"] > MODE_GAP_S:
++            continue                       # 1–3 s: halber Windschatten, in keiner Gruppe
++        if p["restart"]:
++            groups["restart"].append(p["delta"])
++            continue
++        det = detection_gaps.get((p["driver"], p["lap"]), p["gap_start"])
++        groups["mode" if det <= MODE_GAP_S else "tow"].append(p["delta"])
++    return {k: {"median": float(median(v)) if v else None, "n": len(v), "deltas": v}
++            for k, v in groups.items()}
++
++
+ def binned(points: list[dict]) -> list[tuple[float, float, int]]:
+     """[(Mitte des Bereichs, Median-Gewinn, Anzahl)]"""
+     out = []
+@@ -116,3 +172,43 @@ def render_tow_effect(ax, data: dict) -> list[tuple[float, float, int]]:
+     ax.text(0.99, 0.02, "\n".join(notes), transform=ax.transAxes, ha="right", va="bottom",
+             fontsize=7.5, color=COLORS["muted"], linespacing=1.5)
+     return bins
++
++
++def render_tow_split(ax, data: dict) -> dict[str, dict]:
++    """Balken: Speed-Trap-Gewinn für Windschatten + Modus / nur Windschatten / Restart."""
++    res = compute_tow_split(data)
++    if res["mode"]["n"] + res["tow"]["n"] < 10:
++        raise ValueError("Zu wenige Runden innerhalb 1 s für die Aufteilung Windschatten/Overtake Mode")
++    style_axes(ax, grid_axis="y")
++    rng = np.random.default_rng(0)
++    top = 0.0
++    for i, (key, label) in enumerate(GROUPS):
++        g = res[key]
++        if not g["n"]:
++            ax.text(i, 0.5, "no laps", ha="center", va="bottom", fontsize=9, color=COLORS["muted"])
++            continue
++        weak = g["n"] < MIN_GROUP
++        color = COLORS["muted"] if weak else (COLORS["accent"] if key == "mode" else COLORS["text"])
++        ax.bar(i, g["median"], width=0.55, color=color, alpha=0.35 if weak else 0.9, zorder=3)
++        ax.scatter(i + rng.uniform(-0.18, 0.18, g["n"]), g["deltas"], s=9, color=color, alpha=0.5,
++                   linewidth=0, zorder=4)
++        ax.annotate(f"{g['median']:+.1f} km/h", (i, max(g["median"], 0)), xytext=(0, 8),
++                    textcoords="offset points", ha="center", fontsize=11, fontweight="bold",
++                    color=COLORS["text"])
++        ax.text(i, -0.02, f"n = {g['n']}" + (" · uncertain" if weak else ""), transform=ax.get_xaxis_transform(),
++                ha="center", va="top", fontsize=8, color=COLORS["muted"])
++        top = max(top, g["median"], float(np.percentile(g["deltas"], 90)))
++    ax.axhline(0, color=COLORS["muted"], linewidth=0.8)
++    ax.set_ylim(min(-3.0, ax.get_ylim()[0]), top * 1.25 + 1)
++    ax.set_xticks(range(len(GROUPS)), [label for _, label in GROUPS])
++    ax.tick_params(axis="x", pad=18)
++    ax.set_xlim(-0.6, len(GROUPS) - 0.4)
++    ax.set_ylabel("Speed trap vs. own free-air median (km/h)")
++    m, t = res["mode"]["median"], res["tow"]["median"]
++    notes = [f"0 = free air (>{FREE_AIR_S:.0f} s gap, {res['free']['n']} laps) · bar = median, dots = single laps",
++             "detection gap ≈ gap at the line at lap start (proxy)"]
++    if m is not None and t is not None:
++        notes.insert(0, f"overtake mode share ≈ {m - t:+.1f} km/h")
++    ax.text(0.99, 0.98, "\n".join(notes), transform=ax.transAxes, ha="right", va="top",
++            fontsize=7.5, color=COLORS["muted"], linespacing=1.5)
++    return res
+diff --git a/stintlab/registry.py b/stintlab/registry.py
+index 63b1f8b..6248e8e 100644
+--- a/stintlab/registry.py
++++ b/stintlab/registry.py
+@@ -27,7 +27,7 @@ from stintlab.reels.race_story import render_race_story
+ from stintlab.reels.comeback import render_comeback
+ from stintlab.reels.ghost_lap import render_ghost_lap
+ from stintlab.analyses.telemetry import render_telemetry
+-from stintlab.analyses.tow_effect import render_tow_effect
++from stintlab.analyses.tow_effect import render_tow_effect, render_tow_split
+ 
+ 
+ def _gap_between(ax, data, slide):
+@@ -160,6 +160,7 @@ ANALYSES = {
+     "positions": {"render": _positions, "sessions": {"R", "S"}},
+     "gap_on_lap": {"render": _gap_on_lap, "sessions": {"R", "S"}},
+     "tow_effect": {"render": lambda ax, data, slide: render_tow_effect(ax, data), "sessions": {"R", "S"}},
++    "tow_split": {"render": lambda ax, data, slide: render_tow_split(ax, data), "sessions": {"R", "S"}},
+     "sector_delta": {"render": _sector_delta, "sessions": {"R", "S", "FP1", "FP2", "FP3"}},
+     "top_speed": {"render": _top_speed, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
+     "speed_vs_sector": {"render": _speed_vs_sector, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
+diff --git a/tests/test_tow_effect.py b/tests/test_tow_effect.py
+index 6b750cb..7cd7872 100644
+--- a/tests/test_tow_effect.py
++++ b/tests/test_tow_effect.py
+@@ -46,3 +46,67 @@ def test_lap_one_and_sc_laps_are_skipped():
+ def test_binned_medians():
+     pts = [{"gap": 0.2, "delta": 12}, {"gap": 0.4, "delta": 14}, {"gap": 4.0, "delta": 0}]
+     assert binned(pts)[0] == (0.25, 13.0, 2)
++
++
++# --- Aufteilung Windschatten / Overtake Mode --------------------------------
++
++from stintlab.analyses.tow_effect import compute_tow_split, render_tow_split  # noqa: E402
++
++
++def _set(data, drv, n, gap_to_ver=None, speed=None):
++    if gap_to_ver is not None:
++        data["lap_ends"][drv][n] = data["lap_ends"]["VER"][n] + timedelta(seconds=gap_to_ver)
++    if speed is not None:
++        next(l for l in data["laps"] if l["Driver"] == drv and l["LapNumber"] == n)["SpeedST"] = speed
++
++
++def test_split_mode_vs_tow_only():
++    data = race(n_laps=12)
++    # BOT Runde 8: schon am Rundenbeginn (Linie nach Runde 7) 0,5 s hinter VER → Modus
++    _set(data, "BOT", 7, gap_to_ver=0.5)
++    _set(data, "BOT", 8, gap_to_ver=0.5, speed=324)
++    # BOT Runde 11: am Rundenbeginn 1,8 s, am Ende 0,6 s → nur Windschatten
++    _set(data, "BOT", 10, gap_to_ver=1.8)
++    _set(data, "BOT", 11, gap_to_ver=0.6, speed=317)
++    res = compute_tow_split(data)
++    assert res["mode"]["deltas"] == [14]        # 324 − 310
++    # Runde 7 (Anfahrt von 20 s auf 0,5 s, 310 km/h) ist ebenfalls "nur Windschatten"
++    assert sorted(res["tow"]["deltas"]) == [0, 7]   # 317 − 310
++    assert res["restart"]["n"] == 0
++
++
++def test_split_real_detection_gap_overrides_proxy():
++    data = race(n_laps=12)
++    _set(data, "BOT", 10, gap_to_ver=1.8)
++    _set(data, "BOT", 11, gap_to_ver=0.6, speed=317)
++    res = compute_tow_split(data, detection_gaps={("BOT", 11): 0.9})
++    assert res["mode"]["deltas"] == [7] and res["tow"]["n"] == 0
++
++
++def test_split_restart_lap_is_own_group_and_not_in_baseline():
++    data = race(n_laps=12)
++    data["race_control"] = [{"lap": 5, "category": "SafetyCar", "message": "SAFETY CAR DEPLOYED"},
++                            {"lap": 5, "category": "SafetyCar", "message": "SAFETY CAR IN THIS LAP"}]
++    _set(data, "BOT", 5, gap_to_ver=0.5)
++    _set(data, "BOT", 6, gap_to_ver=0.4, speed=321)
++    res = compute_tow_split(data)
++    assert res["restart"]["deltas"] == [11]
++    assert 11 not in res["mode"]["deltas"] + res["tow"]["deltas"]
++    # tow_effect selbst bleibt unverändert: Restart-Runde nicht drin
++    assert 6 not in {p["lap"] for p in compute_tow_effect(data) if p["driver"] == "BOT"}
++
++
++def test_split_renders(tmp_path):
++    import matplotlib
++    matplotlib.use("Agg")
++    import matplotlib.pyplot as plt
++    data = race(n_laps=40)
++    for n in range(20, 40, 2):                  # abwechselnd Modus / nur Windschatten
++        _set(data, "BOT", n, gap_to_ver=0.5)
++        _set(data, "BOT", n + 1, gap_to_ver=0.7, speed=322)
++    for n in range(21, 40, 4):
++        _set(data, "BOT", n - 1, gap_to_ver=1.6)
++    fig, ax = plt.subplots()
++    res = render_tow_split(ax, data)
++    assert res["mode"]["n"] + res["tow"]["n"] >= 10
++    fig.savefig(tmp_path / "split.png")
+-- 
+2.43.0
+

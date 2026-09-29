@@ -40,7 +40,7 @@ def _pct(v: float | None) -> str:
 
 
 # ------------------------------------------------------------------ 1 Strecke + Eckdaten
-def _facts(hist: dict | None, meeting: dict) -> list[tuple[str, str, str, str | None]]:
+def _facts(hist: dict | None, meeting: dict, layout: dict | None = None) -> list[tuple[str, str, str, str | None]]:
     """[(Überschrift, großer Wert, kleine Zeile, Teamfarbe)]."""
     if not hist:
         return [("LAST RACE HERE", "–", "no results found", None)]
@@ -55,8 +55,29 @@ def _facts(hist: dict | None, meeting: dict) -> list[tuple[str, str, str, str | 
         lap = f" · lap {f['lap']}" if f.get("lap") else ""
         out.append((f"FASTEST LAP {y}", f["text"], f"{f['driver']}{lap}", f.get("team")))
     if hist.get("laps"):
-        out.append(("RACE LAPS", str(hist["laps"]), f"{y} distance", None))
+        length = (layout or {}).get("length_m")
+        out.append(("RACE LAPS", str(hist["laps"]), f"{length / 1000:.3f} km/lap" if length else f"{y} distance",
+                    None))
     return out
+
+
+def spread_labels(points: list[tuple[float, float]], min_dist: float, rounds: int = 60) -> list[tuple[float, float]]:
+    """Kurvennummern, die sich überlappen (Baku T9/T10/T12), auseinanderschieben."""
+    p = np.asarray(points, float).reshape(-1, 2).copy()
+    for _ in range(rounds):
+        moved = False
+        for i in range(len(p)):
+            for j in range(i + 1, len(p)):
+                d = p[j] - p[i]
+                dist = float(np.hypot(*d))
+                if dist < min_dist:
+                    push = (d / dist if dist > 1e-9 else np.array([1.0, 0.0])) * (min_dist - dist) / 2
+                    p[i] -= push
+                    p[j] += push
+                    moved = True
+        if not moved:
+            break
+    return [(float(a), float(b)) for a, b in p]
 
 
 def render_track(ax, data: dict) -> dict:
@@ -75,31 +96,37 @@ def render_track(ax, data: dict) -> dict:
         tax.plot(xs, ys, color=COLORS["grid"], linewidth=13, solid_capstyle="round", zorder=1)
         tax.plot(xs, ys, color=COLORS["text"], linewidth=4.2, solid_capstyle="round", zorder=2)
         span = max(np.ptp(xs), np.ptp(ys))
-        # Fahrtrichtung: Pfeil ein Stück nach dem Start
+        # Fahrtrichtung: Pfeil ein Stück nach dem Start (GeoJSON: Richtung unbekannt → kein Pfeil)
         i = max(3, len(xs) // 40)
-        tax.annotate("", xy=(xs[i + 2], ys[i + 2]), xytext=(xs[i - 2], ys[i - 2]), zorder=4,
-                     arrowprops={"arrowstyle": "-|>", "color": COLORS["accent"], "lw": 2.5, "mutation_scale": 22})
+        if layout.get("source") != "geojson":
+            tax.annotate("", xy=(xs[i + 2], ys[i + 2]), xytext=(xs[i - 2], ys[i - 2]), zorder=4,
+                         arrowprops={"arrowstyle": "-|>", "color": COLORS["accent"], "lw": 2.5,
+                                     "mutation_scale": 22})
         if layout.get("source") == "openf1":
             # Start/Ziel: Linie quer zur Strecke am Rundenanfang (echter Zeitpunkt der Linie)
             dx, dy = xs[2] - xs[0], ys[2] - ys[0]
             n = math.hypot(dx, dy) or 1
             px, py = -dy / n * span * 0.03, dx / n * span * 0.03
             tax.plot([xs[0] - px, xs[0] + px], [ys[0] - py, ys[0] + py], color=COLORS["accent"], lw=4, zorder=3)
-        for c in layout.get("corners", []):
-            lx, ly = c.get("lx", c["x"]), c.get("ly", c["y"])
+        labels = spread_labels([(c.get("lx", c["x"]), c.get("ly", c["y"])) for c in layout.get("corners", [])],
+                               min_dist=span * 0.05)
+        for c, (lx, ly) in zip(layout.get("corners", []), labels):
             tax.add_patch(Circle((lx, ly), span * 0.021, color=COLORS["bg"], ec=COLORS["muted"], lw=0.8, zorder=5))
             _text(tax, lx, ly, c["number"], ha="center", va="center", fontsize=7.5 * k, color=COLORS["text"],
                   family=num, zorder=6, keep=False)
         tax.set_aspect("equal", adjustable="datalim")
+        # Rand so, dass auch die Kurvennummern ganz drin sind
         pad = span * 0.05
-        tax.set_xlim(xs.min() - pad, xs.max() + pad)
-        tax.set_ylim(ys.min() - pad, ys.max() + pad)
+        ax_x = np.concatenate([xs, [p[0] for p in labels]])
+        ax_y = np.concatenate([ys, [p[1] for p in labels]])
+        tax.set_xlim(ax_x.min() - pad, ax_x.max() + pad)
+        tax.set_ylim(ax_y.min() - pad, ax_y.max() + pad)
     else:
         _text(tax, 0.5, 0.5, "TRACK MAP NOT AVAILABLE", ha="center", va="center", fontsize=18 * k,
               family=head, fontweight="bold", color=COLORS["muted"], transform=tax.transAxes)
 
     # Eckdaten-Kacheln
-    facts = _facts(data.get("history"), data["meeting"])
+    facts = _facts(data.get("history"), data["meeting"], layout)
     n = len(facts)
     gap = 0.025
     cw = (1 - gap * (n - 1)) / n
@@ -182,7 +209,7 @@ def render_weather(ax, data: dict) -> list[dict]:
         rp = d.get("rain_pct") or 0
         _text(ax, x + 0.03, 0.39, "RAIN", fontsize=8 * k, family=num, color=COLORS["muted"], va="center")
         _text(ax, x + cw - 0.03, 0.39, f"{rp:.0f} %", fontsize=11 * k, family=num, color=COLORS["text"],
-              va="center", ha="right", fontweight="bold", keep=False)
+              va="center", ha="right", keep=False)
         ax.add_patch(Rectangle((x + 0.03, 0.345), cw - 0.06, 0.018, color=COLORS["grid"], linewidth=0))
         ax.add_patch(Rectangle((x + 0.03, 0.345), (cw - 0.06) * min(rp, 100) / 100, 0.018,
                                color="#4ea8ff", linewidth=0))

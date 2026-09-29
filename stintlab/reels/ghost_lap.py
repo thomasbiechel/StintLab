@@ -582,6 +582,27 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
             scene_r.configure(reel)
             scene_r.ghost = drv_b
 
+    # Titelbild: die Szene, in der beide Autos am nächsten beieinander sind (3D-Anfang oder Mitte
+    # der Zeitlupe) – bei 1 s Abstand wäre das andere Auto sonst nur ein Punkt am Horizont
+    from stintlab.reels.cover import make_cover, session_meta
+    if prep.get("compare"):
+        ya_, yb_ = (str(y)[2:] for y in prep["years"])
+        c_title = f"Pole '{ya_} vs '{yb_}"
+        c_sub = f"{drv_a} vs {drv_b} · {abs(prep['gap']):.3f} s {'faster' if prep['gap'] > 0 else 'slower'}"
+    else:
+        c_title, c_sub = f"{drv_a} vs {drv_b}", result
+    shots = []
+    if open_from is not None:
+        shots.append((scene, open_from + OPEN_S / 2))
+    if replay_3d:
+        shots.append((scene_r, rep_from + (rep_to - rep_from) / 2))
+    if shots:
+        def spread(shot):
+            sc, t = shot
+            return float(np.linalg.norm(sc.pos(sc.a, t)[0] - sc.pos(sc.b, t)[0]))
+        c_scene, c_t = min(shots, key=spread)
+        make_cover(reel, path, c_scene, c_t, c_title, kicker="Ghost lap", sub=c_sub, meta=session_meta(data))
+
     plt.rcParams["font.family"] = "sans-serif"
     plt.rcParams["font.sans-serif"] = [resolve_font()]
     fig = plt.figure(figsize=(WIDTH_PX / DPI, HEIGHT_PX / DPI), dpi=DPI, facecolor=COLORS["bg"])

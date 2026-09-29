@@ -62,6 +62,7 @@ WIDTH_PX, HEIGHT_PX, DPI, FPS = 1080, 1920, 150, 60
 HOOK_S, CHART_S, PASS_S, FINISH_S, RESULT_S, RESULT_MAX_S = 3.5, 5.0, 6.5, 4.0, 2.0, 4.0
 FINISH_LEAD_S = 2.2      # Ziel-Szene beginnt so viele Sekunden vor der Linie
 HOOK_CUT_S = 0.5         # Hook endet so viele Sekunden VOR dem Vorbeiziehen
+COVER_AFTER_PASS_S = 0.25   # Titelbild: kurz nach dem Überholen, beide Autos nebeneinander
 PASS_LEAD_S = 2.0        # Manöver-Szene beginnt so viele Sekunden davor und läuft ~3 s danach weiter
                          # (bei 4 s Szene war er nur ~1 s vorbei – „man sieht das Überholen kaum“)
 SLOWMO = 0.5             # um den Moment herum auf 50 % Tempo
@@ -308,6 +309,11 @@ def render_comeback(data: dict, reel: dict, path: Path) -> Path:
         gifts.append(f"{prep['n_pit']} from others' pit stops")
     result_sub = reel.get("result_sub") or (f"{prep['n_track']} places gained on track"
                                             + (f" · {' · '.join(gifts)}" if gifts else ""))
+
+    # Titelbild: Moment des entscheidenden Überholmanövers, Seite an Seite
+    from stintlab.reels.cover import last_name, make_cover, session_meta
+    make_cover(reel, path, scene, prep["t_pass"] + COVER_AFTER_PASS_S, result, kicker=last_name(data, drv),
+               sub=result_sub, meta=session_meta(data))
 
     plt.rcParams["font.family"] = "sans-serif"
     plt.rcParams["font.sans-serif"] = [resolve_font()]

@@ -8,7 +8,7 @@ type = "PREVIEW"
 analysis = "preview_track"
 title = "Sepang is back after 9 years"
 subtitle = "Last race here in 2017"
-source = "Data: OpenF1 · Jolpica-F1"
+source = "Data: OpenF1 · Jolpica-F1 · f1-circuits"
 
 [[slides]]
 analysis = "preview_weather"

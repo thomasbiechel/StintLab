@@ -55,7 +55,7 @@ def preview_toml(meeting: dict, data: dict) -> str:
     lay = data.get("layout")
     if lay and lay.get("source") == "multiviewer":
         track_sub += " · corner numbers as used by F1"
-    elif lay:
+    elif lay and lay.get("source") == "openf1":
         track_sub += " · track drawn from car positions"
 
     form_title = "Who's in form"
@@ -79,7 +79,8 @@ def preview_toml(meeting: dict, data: dict) -> str:
     else:
         chances_sub = "Recent form only · an assessment, not a prediction"
 
-    track_source = "Data: OpenF1 · Jolpica-F1" if old else None
+    extra = (["Jolpica-F1"] if old else []) + (["f1-circuits"] if lay and lay.get("source") == "geojson" else [])
+    track_source = "Data: " + " · ".join(["OpenF1"] + extra) if extra else None
     slides = [
         ("preview_track", track_title, track_sub),
         ("preview_weather", f"{place} weekend forecast", "Friday to Sunday at the circuit · local times"),

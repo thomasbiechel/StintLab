@@ -10,4 +10,9 @@ part        = "Q3"
 compare     = { meeting_key = 1269 }
 replay_km   = 5.2       # Ende der langen Geraden: RUS '26 verliert bei Vollgas Tempo
 replay_note = "RUS '26: full throttle – still losing speed"
-open_at     = 45        # 3D-Anfang am Start der Runde (Ghost halbtransparent, weil beide übereinander)
+open_at     = 50       # 3D-Anfang bei 45 s in der Runde
+
+# Titelbild – nach den Zeilen des Reels. Ohne sub: Abstand automatisch aus den Daten
+[reels.cover]
+title  = "Pole '26 vs '25"
+kicker = "Russell vs Verstappen"

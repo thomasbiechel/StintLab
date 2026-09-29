@@ -379,12 +379,64 @@ def layout_from_race(race: dict, driver: str, refresh: bool = False) -> dict | N
     return {"x": [p[0] for p in pts], "y": [p[1] for p in pts], "corners": [], "source": "openf1"}
 
 
+# Streckenverlauf als GeoJSON (github.com/bacinger/f1-circuits, MIT-Lizenz) – für Strecken,
+# die MultiViewer (noch) nicht hat, z. B. Sepang vor dem ersten Rennen 2026. Ohne Kurvennummern
+# und ohne Fahrtrichtung, dafür mit Streckenlänge.
+GEO_URL = "https://raw.githubusercontent.com/bacinger/f1-circuits/master/circuits/{}.geojson"
+GEO_ID = {
+    2: "gb-1948", 4: "hu-1986", 6: "it-1953", 7: "be-1925", 9: "us-2012", 10: "au-1953", 12: "my-1999",
+    14: "br-1940", 15: "es-1991", 19: "at-1969", 22: "mc-1929", 23: "ca-1978", 39: "it-1922", 46: "jp-1962",
+    49: "cn-2004", 55: "nl-1948", 61: "sg-2008", 63: "bh-2002", 65: "mx-1962", 70: "ae-2009", 144: "az-2016",
+    149: "sa-2021", 150: "qa-2004", 151: "us-2022", 152: "us-2023", 153: "es-2026",
+}
+
+
+def _geojson(circuit_key: int, refresh: bool = False, get=None) -> dict | None:
+    gid = GEO_ID.get(circuit_key)
+    if not gid:
+        return None
+    path = CIRCUITS_DIR / f"geo_{gid}.json"
+    if path.exists() and not refresh:
+        return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        if get is None:
+            import requests
+            r = requests.get(GEO_URL.format(gid), timeout=30)
+            r.raise_for_status()
+            raw = r.json()
+        else:
+            raw = get(gid)
+    except Exception:
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    return raw
+
+
+def layout_from_geojson(raw: dict) -> dict | None:
+    """Längen-/Breitengrade → Meter (Norden oben), Länge aus den Eigenschaften."""
+    import numpy as np
+    feats = [f for f in raw.get("features", []) if f.get("geometry", {}).get("type") == "LineString"]
+    if not feats:
+        return None
+    lon, lat = np.asarray(feats[0]["geometry"]["coordinates"], float).T[:2]
+    x = (lon - lon.mean()) * 111_320 * np.cos(np.radians(lat.mean()))
+    y = (lat - lat.mean()) * 110_540
+    return {"x": x.tolist(), "y": y.tolist(), "corners": [], "source": "geojson",
+            "length_m": feats[0].get("properties", {}).get("length")}
+
+
 def track_layout(meeting: dict, hist: dict | None, refresh: bool = False) -> dict | None:
     year = _year(meeting)
     for y in (year, year - 1):
         raw = _multiviewer(meeting.get("circuit_key"), y, refresh)
         if raw:
             return layout_from_multiviewer(raw)
+    geo = _geojson(meeting.get("circuit_key"), refresh)
+    if geo:
+        lay = layout_from_geojson(geo)
+        if lay:
+            return lay
     if hist and hist.get("_race") and hist.get("winner"):
         try:
             return layout_from_race(hist["_race"], hist["winner"], refresh)

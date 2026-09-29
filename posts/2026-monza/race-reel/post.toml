@@ -12,3 +12,9 @@ drivers  = ["ANT"]
 # pass   = { lap = 50, rival = "RUS" }   # Standard: das Manöver auf den Zielplatz
 # Seite des Manövers steht nicht in den Daten – nach TV-Bildern bestätigt: links
 pass     = { lap = 50, rival = "RUS", side = "left" }
+
+# Titelbild – gehört zum Reel darüber, muss deshalb NACH dessen Zeilen stehen
+[reels.cover]
+title  = "P19 → P1"
+kicker = "Antonelli"
+sub    = "22 places gained on track – and the win by 3.857 s"

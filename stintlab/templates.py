@@ -145,6 +145,14 @@ def post_toml(meeting: dict, stype: str, facts: dict, long_run: str | None = Non
     return "\n".join(lines)
 
 
+# Titelbild: entsteht automatisch neben dem Video – Texte hier überschreiben (Zeilen einkommentieren)
+COVER_HINT = ["# Titelbild (reel_XX_..._cover.png) – Standardtexte aus den Daten, zum Ändern einkommentieren:",
+              "# [reels.cover]",
+              '# title  = "..."',
+              '# kicker = "..."',
+              '# sub    = "..."']
+
+
 def reel_toml(meeting: dict, stype: str, facts: dict, compare: dict | None = None) -> str | None:
     """Inhalt der post.toml für die Reels einer Session (oder None).
     compare: Vorjahres-Qualifying (stintlab.compare.fetch_quali + "year") → zusätzlicher
@@ -165,6 +173,7 @@ def reel_toml(meeting: dict, stype: str, facts: dict, compare: dict | None = Non
             lines.append(f"{k} = {_toml_value(v)}")
         lines.append(f"hook     = {_toml_value(hook.format(**fmt))}   # TODO schärfen")
         lines.append(f"result   = {_toml_value(result.format(**fmt))}")
+        lines += COVER_HINT
         lines.append("")
     if compare and stype == "Q":
         lines += [f"# Pole {meeting.get('year', '')} vs. Pole {compare['year']} ({compare['pole']}) – gleiche Strecke,",
@@ -177,5 +186,5 @@ def reel_toml(meeting: dict, stype: str, facts: dict, compare: dict | None = Non
                   f"compare  = {{ meeting_key = {compare['meeting_key']} }}",
                   "open_at  = 0          # 3D-Anfang am Start der Runde (Vorjahr als halbtransparenter Geist)",
                   "# replay_km   = 5.2   # Zeitlupe an eine Stelle legen (Standard: größte Abstandsänderung)",
-                  '# replay_note = "..."  # eine Zeile Erklärung in der Zeitlupe', ""]
+                  '# replay_note = "..."  # eine Zeile Erklärung in der Zeitlupe', *COVER_HINT, ""]
     return "\n".join(lines)
