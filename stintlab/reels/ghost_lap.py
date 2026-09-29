@@ -472,23 +472,36 @@ def open_from_config(reel: dict, replay_from: float | None, prep: dict, lap_time
     return float(np.clip(start, 0.0, max(lap_time - OPEN_S, 0.0)))
 
 
+ORDERS = ("classic", "moment_first")
+
+
 def frame_times(lap_time: float, replay_from: float | None,
-                open_from: float | None = None) -> list[tuple[str, float]]:
+                open_from: float | None = None, order: str = "classic") -> list[tuple[str, float]]:
     """[(Phase, Rundenzeit in s), ...] – ein Eintrag pro Videobild.
 
     replay_from = None: keine Zeitlupe – die Runde bekommt deren Zeit dazu und
     läuft langsamer (Gesamtlänge bleibt gleich).
     open_from = None: ohne 3D-Anfang (z. B. in Tests ohne Positionsdaten).
+    order:
+      "classic"      3D-Anfang → ganze Runde (Karte) → Zeitlupe → Ergebnis
+      "moment_first" 3D-Anfang → Zeitlupe → ganze Runde (Karte) → Ergebnis.
+                     Grund (Reel Baku Pole '26 vs '25): Die Hälfte der Zuschauer
+                     ging zwischen 0:02 und 0:06 – genau beim Schnitt vom 3D-Bild
+                     auf die flache Karte, deren Abstand wieder bei 0,00 s beginnt.
+                     So bleibt es bis ~8,5 s in 3D, die Karte fasst danach zusammen.
     """
-    frames = [] if open_from is None else [("open", open_from + i / FPS) for i in range(int(OPEN_S * FPS))]
+    if order not in ORDERS:
+        raise ValueError(f"order muss einer von {', '.join(ORDERS)} sein")
+    opening = [] if open_from is None else [("open", open_from + i / FPS) for i in range(int(OPEN_S * FPS))]
     n = int((LAP_S if replay_from is not None else LAP_S + REPLAY_S) * FPS)
-    frames += [("lap", lap_time * i / (n - 1)) for i in range(n)]
+    lap = [("lap", lap_time * i / (n - 1)) for i in range(n)]
+    replay = []
     if replay_from is not None:
         n = int(REPLAY_S * FPS)
         end = min(replay_from + REPLAY_WINDOW_S, lap_time)
-        frames += [("replay", replay_from + (end - replay_from) * i / (n - 1)) for i in range(n)]
-    frames += [("result", lap_time)] * int(RESULT_S * FPS)
-    return frames
+        replay = [("replay", replay_from + (end - replay_from) * i / (n - 1)) for i in range(n)]
+    middle = replay + lap if order == "moment_first" else lap + replay
+    return opening + middle + [("result", lap_time)] * int(RESULT_S * FPS)
 
 
 def _position(p: tuple, t: float | np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -827,7 +840,7 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
                                     extra_args=["-pix_fmt", "yuv420p", "-crf", "20"])
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    frames = frame_times(lap_a, rep_from, open_from)
+    frames = frame_times(lap_a, rep_from, open_from, reel.get("order", "classic"))
     step = max(len(frames) // 10, 1)
     with writer.saving(fig, str(path), dpi=DPI):
         last = None

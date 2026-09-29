@@ -95,3 +95,18 @@ def test_replay_window_avoids_frozen_data():
     start = replay_start(prep, 100.0)
     assert not (26.0 < start < 35.0)
     assert 56.0 <= start <= 64.0
+
+
+def test_moment_first_puts_slow_mo_right_after_the_opening():
+    classic = frame_times(102.526, 60.0, open_from=59.5)
+    moment = frame_times(102.526, 60.0, open_from=59.5, order="moment_first")
+    assert len(moment) == len(classic) and sorted(moment) == sorted(classic)
+    phases = [p for p, _ in moment]
+    first_change = [phases[i] for i in range(1, len(phases)) if phases[i] != phases[i - 1]]
+    assert first_change == ["replay", "lap", "result"]
+
+
+def test_unknown_order_is_rejected():
+    import pytest
+    with pytest.raises(ValueError):
+        frame_times(90.0, 50.0, order="random")
