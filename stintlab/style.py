@@ -235,11 +235,13 @@ def scale_chart_texts(fig, factor: float = TEXT_SCALE) -> None:
             lab.set_fontsize(lab.get_fontsize() * factor)
 
 
-def save_slide(fig, path):
-    """Speichert die Slide exakt in 1080 x 1350 px und schließt die Figur."""
+def save_slide(fig, path, scaled: bool = False):
+    """Speichert die Slide exakt in 1080 x 1350 px und schließt die Figur.
+    scaled=True: Texte wurden schon vergrößert (animierte Slide, reels/animate.py)."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    scale_chart_texts(fig)
+    if not scaled:
+        scale_chart_texts(fig)
     # Kein bbox_inches="tight" – das würde die Pixelgröße verändern
     fig.savefig(path, dpi=DPI, facecolor=fig.get_facecolor())
     plt.close(fig)

@@ -113,7 +113,15 @@ def build(config_file: Path, refresh: bool = False, keep_going: bool = False) ->
                                 source=slide.get("source") or ANALYSES[slide["analysis"]].get("source", "Data: OpenF1"),
                                 meta=meta_for(slide.get("session", session["type"])), page=f"{i:02d} / {n_slides:02d}")
             ANALYSES[slide["analysis"]]["render"](ax, sessions[slide.get("session", session["type"])], slide)
-            path = save_slide(fig, out_dir / filename)
+            as_reel = slide.get("reel", False)
+            if not isinstance(as_reel, bool):
+                raise ValueError("reel muss true oder false sein (klein geschrieben, ohne Anführungszeichen)")
+            if as_reel:
+                # dieselbe Slide als Reel: Balken bauen sich Zeile für Zeile auf (reels/animate.py)
+                from stintlab.reels.animate import animate_slide
+                reel_path = animate_slide(fig, ax, out_dir / f"{i:02d}_{slide['analysis']}_reel.mp4")
+                print(f"✓ {reel_path}")
+            path = save_slide(fig, out_dir / filename, scaled=as_reel)
             print(f"✓ {path}")
         except Exception as exc:
             if not keep_going:

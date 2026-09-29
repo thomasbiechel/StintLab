@@ -7,5 +7,6 @@ type = "Q"
 
 [[slides]]
 analysis = "teammate_duel"
+reel     = true          # zusätzlich 01_teammate_duel_reel.mp4: Balken bauen sich auf
 title    = "WHO BEATS THEIR TEAMMATE?"
 subtitle = "2026 qualifying head-to-heads · bar = median gap in the last session both reached"
