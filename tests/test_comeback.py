@@ -68,3 +68,33 @@ def test_runner_up_without_numeric_gap_is_none():
     from stintlab.reels.comeback import runner_up
     data = {"results": [{"driver": "ANT", "position": 1}, {"driver": "RUS", "position": 2, "gap": "+1 LAP"}]}
     assert runner_up(data, "ANT") is None
+
+
+def _prep_for_frames():
+    from stintlab.reels.comeback import FPS, HOOK_CUT_S, HOOK_S, PASS_S
+    t_pass = 1000.0
+    return {"hook_times": t_pass - HOOK_CUT_S - HOOK_S + np.arange(int(HOOK_S * FPS)) / FPS,
+            "pass_times": slowmo_times(t_pass, PASS_S), "finish_times": np.arange(10.0),
+            "result_times": np.arange(5.0), "laps": list(range(0, 54)), "lap": 50, "last_lap": 53}
+
+
+def test_moment_first_shows_the_pass_before_the_chart_and_does_not_rewind():
+    from stintlab.reels.comeback import frame_list
+    prep = _prep_for_frames()
+    frames = frame_list(prep, "moment_first")
+    phases = [p for p, _ in frames]
+    order = [phases[0]] + [phases[i] for i in range(1, len(phases)) if phases[i] != phases[i - 1]]
+    assert order == ["hook", "pass", "chart", "finish", "result"]
+    first_pass = next(v for p, v in frames if p == "pass")
+    assert prep["pass_times"][int(first_pass)] > prep["hook_times"][-1]     # kein Zurückspringen
+    assert max(v for p, v in frames if p == "chart") == pytest.approx(53)    # Rückblende bis zum Ende
+    assert len(frames) < len(frame_list(prep))                              # etwas kürzer als klassisch
+
+
+def test_classic_order_unchanged_and_unknown_order_rejected():
+    from stintlab.reels.comeback import frame_list
+    phases = [p for p, _ in frame_list(_prep_for_frames())]
+    order = [phases[0]] + [phases[i] for i in range(1, len(phases)) if phases[i] != phases[i - 1]]
+    assert order == ["hook", "chart", "pass", "finish", "result"]
+    with pytest.raises(ValueError):
+        frame_list(_prep_for_frames(), "random")

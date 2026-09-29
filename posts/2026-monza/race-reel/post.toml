@@ -7,6 +7,7 @@ type = "R"
 [[reels]]
 analysis = "comeback"
 drivers  = ["ANT"]
+order    = "moment_first"   # Manöver direkt nach dem Hook, Diagramm als Rückblende
 # hook/result optional – Standard aus den Daten:
 # hook   = "P19 → P1 – then he had to do it again"   (Standard, wenn er den Zielplatz zwischendurch verloren hat)
 # pass   = { lap = 50, rival = "RUS" }   # Standard: das Manöver auf den Zielplatz

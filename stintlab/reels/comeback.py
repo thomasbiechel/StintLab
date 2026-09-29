@@ -21,6 +21,13 @@ ABLAUF (1080 × 1920, 9:16, 60 Bilder/s, ~18 s):
                           die Uhr den Abstand erreicht (max. RESULT_MAX_S). Kein
                           Logo-Screen – das Reel läuft direkt in die Schleife.
 
+REIHENFOLGE order = "moment_first" (post.toml): Hook → Manöver → Positionskurve
+als Rückblende („HOW HE GOT THERE“, bis zur letzten Runde) → Ziel → Auflösung.
+Das Manöver schließt nahtlos an den Hook an (kein Zurückspringen), das Reel
+wird dadurch ~1,5 s kürzer. Grund: Beim Quali-Reel Baku ging die Hälfte der
+Zuschauer zwischen 0:02 und 0:06 – beim Schnitt von 3D auf die flache Grafik.
+So bleibt es bis nach dem Höhepunkt in 3D.
+
 ÜBERHOLMANÖVER ZÄHLEN (position_events): aus den Positionen an der Ziellinie.
 Liegt ein Gegner in Runde n nicht mehr vor dem Fahrer, obwohl er es in n−1 tat:
   - Gegner hat Runde n nicht beendet          → "dnf"   (geschenkt)
@@ -252,15 +259,30 @@ def prepare(data: dict, reel: dict) -> dict:
             "own_pits": sorted(n for n in _pit_laps(data).get(drv, set()) if laps[0] <= n <= laps[-1])}
 
 
-def frame_list(prep: dict) -> list[tuple[str, float]]:
+ORDERS = ("classic", "moment_first")
+
+
+def frame_list(prep: dict, order: str = "classic") -> list[tuple[str, float]]:
+    if order not in ORDERS:
+        raise ValueError(f"order muss einer von {', '.join(ORDERS)} sein")
     frames = [("hook", i) for i in range(len(prep["hook_times"]))]
     n = int(CHART_S * FPS)
     lo = prep["laps"][0]
-    hi = max(lo, prep["lap"] - 1)       # stoppt vor der Runde des Manövers: P1 zeigt erst die 3D-Szene
+    if order == "moment_first":
+        hi = max(lo, prep["last_lap"])  # Rückblende: das Manöver ist schon gezeigt, also bis zum Ende
+    else:
+        hi = max(lo, prep["lap"] - 1)   # stoppt vor der Runde des Manövers: P1 zeigt erst die 3D-Szene
     u = np.linspace(0.0, 1.0, n)
     ease = 0.75 * u + 0.25 * (1 - (1 - u) ** 2)      # zum Ende hin etwas langsamer
-    frames += [("chart", lo + (hi - lo) * e) for e in ease]
-    frames += [("pass", i) for i in range(len(prep["pass_times"]))]
+    chart = [("chart", lo + (hi - lo) * e) for e in ease]
+    if order == "moment_first":
+        # nahtlos an den Hook: nur Bilder der Manöver-Szene NACH dem letzten Hook-Bild
+        after = prep["hook_times"][-1] if len(prep["hook_times"]) else -np.inf
+        frames += [("pass", i) for i, t in enumerate(prep["pass_times"]) if t > after]
+        frames += chart
+    else:
+        frames += chart
+        frames += [("pass", i) for i in range(len(prep["pass_times"]))]
     frames += [("finish", i) for i in range(len(prep["finish_times"]))]
     frames += [("result", i) for i in range(len(prep["result_times"]))]
     return frames
@@ -417,6 +439,8 @@ def render_comeback(data: dict, reel: dict, path: Path) -> Path:
 
     tag_3d = f"LAP {lap} / {last_lap} · FOR P{prep['final']}"
     chart_end = max(laps[0], lap - 1)
+    order = reel.get("order", "classic")
+    flashback = order == "moment_first"
     ends = data["lap_ends"]
     gap_before = ((ends[drv][chart_end] - ends[rival][chart_end]).total_seconds()
                   if chart_end in ends.get(drv, {}) and chart_end in ends.get(rival, {}) else None)
@@ -467,8 +491,11 @@ def render_comeback(data: dict, reel: dict, path: Path) -> Path:
         else:
             pop.set_visible(False)
         # Spannung vor dem Schnitt in 3D: wer vorne ist und wie weit (über der Grafik, nicht auf der Kurve)
-        tense = p >= chart_end - 3.0 and gap_before is not None and not recent
-        t_tense.set_text(f"{rival} {gap_before:.1f} s AHEAD · {last_lap - chart_end} LAPS LEFT" if tense else "")
+        if flashback:
+            t_tense.set_text("HOW HE GOT THERE")
+        else:
+            tense = p >= chart_end - 3.0 and gap_before is not None and not recent
+            t_tense.set_text(f"{rival} {gap_before:.1f} s AHEAD · {last_lap - chart_end} LAPS LEFT" if tense else "")
         t_foot.set_text("Data: OpenF1 · position at the finish line each lap · "
                         + neutral_legend(k for *_, k in prep["phases"])
                         + "\nplaces gained on track = not from retirements or other cars' pit stops")
@@ -531,7 +558,7 @@ def render_comeback(data: dict, reel: dict, path: Path) -> Path:
     writer = animation.FFMpegWriter(fps=FPS, codec="libx264", extra_args=["-pix_fmt", "yuv420p", "-crf", "20"])
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    frames = frame_list(prep)
+    frames = frame_list(prep, order)
     step = max(len(frames) // 10, 1)
     with writer.saving(fig, str(path), dpi=DPI):
         last = None
