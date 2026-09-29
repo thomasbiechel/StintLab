@@ -27,7 +27,7 @@ from stintlab.reels.race_story import render_race_story
 from stintlab.reels.comeback import render_comeback
 from stintlab.reels.ghost_lap import render_ghost_lap
 from stintlab.analyses.telemetry import render_telemetry
-from stintlab.analyses.tow_effect import render_tow_effect
+from stintlab.analyses.tow_effect import render_tow_effect, render_tow_split
 
 
 def _gap_between(ax, data, slide):
@@ -160,6 +160,7 @@ ANALYSES = {
     "positions": {"render": _positions, "sessions": {"R", "S"}},
     "gap_on_lap": {"render": _gap_on_lap, "sessions": {"R", "S"}},
     "tow_effect": {"render": lambda ax, data, slide: render_tow_effect(ax, data), "sessions": {"R", "S"}},
+    "tow_split": {"render": lambda ax, data, slide: render_tow_split(ax, data), "sessions": {"R", "S"}},
     "sector_delta": {"render": _sector_delta, "sessions": {"R", "S", "FP1", "FP2", "FP3"}},
     "top_speed": {"render": _top_speed, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "speed_vs_sector": {"render": _speed_vs_sector, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
