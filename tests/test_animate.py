@@ -48,3 +48,16 @@ def test_no_bars_is_a_clear_error(tmp_path):
     with pytest.raises(ValueError):
         animate_slide(fig, ax, tmp_path / "r.mp4")
     plt.close(fig)
+
+
+def test_zero_value_row_is_still_a_row():
+    """Wert 0,0 → Balken mit Breite 0; die Zeile muss trotzdem erkannt werden."""
+    fig, ax = plt.subplots(figsize=(3.6, 4.5), dpi=60)
+    ax.barh(1, 2.5, height=0.6)
+    ax.text(2.6, 1, "+2.5")
+    ax.barh(0, 0.0, height=0.6)
+    ax.text(0.1, 0, "+0.0")
+    rows = rows_of(ax)
+    assert sorted(rows) == [0.0, 1.0]
+    assert [t.get_text() for t in rows[0.0]["texts"]] == ["+0.0"]
+    plt.close(fig)

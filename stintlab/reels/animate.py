@@ -54,7 +54,9 @@ def rows_of(ax) -> dict[float, dict[str, list]]:
     for p in ax.patches:
         # get_data_transform, nicht get_transform: bei Rechtecken ist Letztere mit der
         # Patch-Transformation zusammengesetzt und nie gleich ax.transData
-        if isinstance(p, Rectangle) and p.get_data_transform() == ax.transData and p.get_width() != 0:
+        # auch Balken mit Breite 0 (Wert 0,0): sonst hat die Zeile keinen Balken, ihre Texte
+        # galten als „immer sichtbar“ und standen schon im ersten Bild (Samstag/Sonntag: BOR, COL)
+        if isinstance(p, Rectangle) and p.get_data_transform() == ax.transData:
             row(p.get_y() + p.get_height() / 2)["bars"].append(p)
     for t in ax.texts:
         if t.get_transform() == ax.transData:
