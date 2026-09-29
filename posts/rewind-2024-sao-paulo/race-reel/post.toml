@@ -1,0 +1,24 @@
+# StintLab Rewind #1 · São Paulo 2024 · Verstappen P17 → P1 (Regenrennen, rote Flagge Runde 33)
+# Frage der Folge: Wie viel davon war Überholen – und wie viel die rote Flagge?
+# Rendern: python make_post.py posts/rewind-2024-sao-paulo/race-reel/post.toml
+# VOR dem Posten: Konsolenausgabe (auf der Strecke / Ausfälle / fremde Stopps / Manöver)
+# gegen einen Rennbericht prüfen.
+[session]
+meeting_key = 1249
+type = "R"
+
+[[reels]]
+analysis = "comeback"
+drivers  = ["VER"]
+order    = "moment_first"   # Manöver direkt nach dem Hook, Diagramm als Rückblende
+rain     = true             # Regenrennen: Regenstriche, Gischt, bedeckter Himmel
+hook     = "P17 → P1 – skill or luck?"
+# Manöver: Standard = letzter Platzgewinn auf der Strecke (erwartet: OCO nach dem Restart).
+# Seite steht nicht in den Daten – nach TV-Bildern eintragen, z. B.:
+# Kurve 1 (Senna-S) ist eine Linkskurve → innen = links (nach TV-Bildern bestätigt)
+pass     = { lap = 43, rival = "OCO", side = "left" }
+
+[reels.cover]
+title  = "P17 → P1"
+kicker = "Rewind · São Paulo 2024"
+sub    = "Verstappen in the rain – how much was luck?"

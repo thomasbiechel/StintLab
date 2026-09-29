@@ -207,6 +207,21 @@ def slowmo_times(t_pass: float, duration: float, lead: float = PASS_LEAD_S, fps:
     return np.array(out)
 
 
+def moment_times(t_pass: float, fps: int = FPS) -> tuple[np.ndarray, np.ndarray]:
+    """Hook + Manöver als EINE durchgehende Zeitlupen-Kurve (order = "moment_first").
+
+    Vorher lief der Hook in Echtzeit und die Manöver-Szene setzte 0,5 s vor dem
+    Vorbeiziehen schon bei ~60 % Tempo ein – das Bild „stockte“ genau beim
+    Überholen (São Paulo 2024, Monza 2026). Jetzt bremst schon der Hook weich ab,
+    die Manöver-Szene macht nahtlos weiter und endet dort, wo sie klassisch endet."""
+    n_hook = int(HOOK_S * fps)
+    end = slowmo_times(t_pass, PASS_S, fps=fps)[-1]
+    seq = slowmo_times(t_pass, HOOK_S + PASS_S + HOOK_CUT_S + PASS_LEAD_S + 10.0,
+                       lead=HOOK_CUT_S + HOOK_S, fps=fps)
+    seq = seq[seq <= end]
+    return seq[:n_hook], seq[n_hook:]
+
+
 # ── Vorbereitung (ohne Zeichnen, testbar) ────────────────────────────────────
 
 def prepare(data: dict, reel: dict) -> dict:
@@ -234,8 +249,11 @@ def prepare(data: dict, reel: dict) -> dict:
         raise ValueError('pass.side muss "left" oder "right" sein')
     side = {"left": 1.0, "right": -1.0}.get(side_cfg) or scene.corner_side(t_pass - 1.0)
     scene.set_pass(t_pass, side)
-    hook_times = t_pass - HOOK_CUT_S - HOOK_S + np.arange(int(HOOK_S * FPS)) / FPS
-    pass_times = slowmo_times(t_pass, PASS_S)
+    if reel.get("order", "classic") == "moment_first":
+        hook_times, pass_times = moment_times(t_pass)
+    else:
+        hook_times = t_pass - HOOK_CUT_S - HOOK_S + np.arange(int(HOOK_S * FPS)) / FPS
+        pass_times = slowmo_times(t_pass, PASS_S)
     t_fin = finish_time(scene, data, drv)
     finish_times = slowmo_times(t_fin, FINISH_S, lead=FINISH_LEAD_S)
     runner = runner_up(data, drv)
@@ -338,7 +356,7 @@ def render_comeback(data: dict, reel: dict, path: Path) -> Path:
                sub=result_sub, meta=session_meta(data))
 
     plt.rcParams["font.family"] = "sans-serif"
-    plt.rcParams["font.sans-serif"] = [resolve_font()]
+    plt.rcParams["font.sans-serif"] = [resolve_font(), "DejaVu Sans"]   # Ersatz für →, ▲▼ (fehlen in Barlow)
     fig = plt.figure(figsize=(WIDTH_PX / DPI, HEIGHT_PX / DPI), dpi=DPI, facecolor=COLORS["bg"])
 
     # ── 3D-Ebene + Verlauf oben/unten, damit weiße Schrift immer lesbar ist ──
@@ -538,7 +556,12 @@ def render_comeback(data: dict, reel: dict, path: Path) -> Path:
         t_p1.set_visible(phase == "finish" and el < 1.6)
         if runner:
             name, gap = runner
-            if el < gap:     # Uhr läuft, bis der Zweite die Linie erreicht
+            # Uhr läuft, bis der Zweite die Linie erreicht. Ist der Abstand länger als das
+            # Reel (São Paulo 2024: 19,5 s, Uhr max. ~4 s), stoppt sie 1,2 s vor Schluss und
+            # der offizielle Abstand erscheint – sonst endete das Reel bei „+4,6 s“.
+            el_end = float(prep["result_times"][-1] - t_fin) if len(prep["result_times"]) else gap
+            cut = gap if gap <= el_end else el_end - 1.2
+            if el < cut:
                 t_fin_gap.set_text(f"+{el:.1f} s")
                 t_fin_sub.set_text(f"{name} still to cross the line")
             else:

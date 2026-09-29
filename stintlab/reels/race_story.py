@@ -385,7 +385,7 @@ def render_race_story(data: dict, reel: dict, path: Path) -> Path:
                sub=f"{final:.3f} s ahead of {last_name(data, b)} at the flag", meta=session_meta(data))
 
     plt.rcParams["font.family"] = "sans-serif"
-    plt.rcParams["font.sans-serif"] = [resolve_font()]
+    plt.rcParams["font.sans-serif"] = [resolve_font(), "DejaVu Sans"]   # Ersatz für →, ▲▼ (fehlen in Barlow)
     fig = plt.figure(figsize=(WIDTH_PX / DPI, HEIGHT_PX / DPI), dpi=DPI, facecolor=COLORS["bg"])
 
     # Streckenumriss = schnellste Runde von A

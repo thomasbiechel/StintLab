@@ -98,3 +98,12 @@ def test_classic_order_unchanged_and_unknown_order_rejected():
     assert order == ["hook", "chart", "pass", "finish", "result"]
     with pytest.raises(ValueError):
         frame_list(_prep_for_frames(), "random")
+
+def test_moment_first_timing_has_no_jump_at_the_cut():
+    """Hook und Manöver bilden eine Kurve: kein Tempo-Sprung beim Schnitt (war: 1,0 → 0,6)."""
+    from stintlab.reels.comeback import FPS, moment_times
+    hook, pas = moment_times(1000.0)
+    speed = np.diff(np.concatenate([hook, pas])) * FPS
+    assert np.abs(np.diff(speed)).max() < 0.02
+    assert hook[-1] < 1000.0 < pas[-1]
+    assert speed.min() == pytest.approx(0.5, abs=0.02)      # am Überholpunkt halbe Geschwindigkeit

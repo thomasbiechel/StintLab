@@ -85,8 +85,16 @@ LIGHTS = {
               "far_city": _BG, "grass": (0.035, 0.07, 0.04), "pavement": (0.055, 0.055, 0.06),
               "asphalt": (0.17, 0.17, 0.2), "barrier": (0.38, 0.39, 0.42), "wall": (0.44, 0.44, 0.46),
               "facade": 0.65, "windows": 0.35, "trees": 0.8, "grid": 0.35, "edge": "#9a9aa6"},
+    # Regen (rain = true in der post.toml): bedeckter Tag, dunkler nasser Asphalt, dichter Dunst
+    "rain": {"sky_top": "#4b545e", "sky_hor": "#8d969e", "fog": (0.52, 0.56, 0.60),
+             "far_park": (0.16, 0.20, 0.15), "far_city": (0.30, 0.30, 0.31),
+             "grass": (0.13, 0.24, 0.11), "pavement": (0.30, 0.30, 0.31), "asphalt": (0.16, 0.16, 0.18),
+             "barrier": (0.60, 0.60, 0.63), "wall": (0.65, 0.65, 0.64), "facade": 1.6, "windows": 0.05,
+             "trees": 1.7, "grid": 0.0, "edge": "#d4d4da"},
 }
 _FOG = np.array(_BG)     # Dunstfarbe des aktuellen Bildes (draw_scene setzt sie)
+RAIN_STREAKS, RAIN_FALL = 170, 1.6       # Anzahl Striche, Fallgeschwindigkeit (Bildhöhen pro Sekunde)
+SPRAY_M, SPRAY_POINTS = 14.0, 260        # Gischt hinter jedem Auto: Länge, Punkte
 FLOOR_M, WIN_EVERY_M = 3.5, 3.2
 
 
@@ -200,6 +208,7 @@ class Scene:
         self.scenery = scenery_for(data.get("session_key"))    # vor dem ersten Bild überschreibbar
         # Uhrzeit der Referenz-Session (beim Vorjahresvergleich die aktuelle, nicht das Vorjahr)
         self.light = light_for(data.get("session_key"), self.t0s.get(rd, self.t0))
+        self.rain = False                 # Regenstriche + Gischt (configure: rain = true)
         self._env = None
 
     def configure(self, reel: dict) -> None:
@@ -212,6 +221,12 @@ class Scene:
             if reel["light"] not in LIGHTS:
                 raise ValueError(f'light muss eins von {", ".join(LIGHTS)} sein')
             self.light = reel["light"]
+        rain = reel.get("rain", False)
+        if not isinstance(rain, bool):
+            raise ValueError("rain muss true oder false sein (klein geschrieben, ohne Anführungszeichen)")
+        self.rain = rain
+        if rain and reel.get("light") is None:
+            self.light = "rain"
         self._env = None
 
     def _zfun(self, location, t0):
@@ -812,9 +827,48 @@ def draw_scene(ax, scene: Scene, t: float) -> float:
     beside = scene.separation(t) > 1.0
     for i, (_, p, fw, d) in enumerate(cars):
         is_left = (xa_s < xb_s) if d == scene.a else (xb_s < xa_s)
+        if scene.rain:
+            draw_spray(ax, cam, p, fw, t, 6.5 + 2 * i)
         draw_car(ax, cam, p, fw, scene.col[d], d, 7 + 2 * i, label_side=-1 if (beside and is_left) else 1,
                  alpha=0.45 if d == scene.ghost else 1.0)
+    if scene.rain:
+        draw_rain(ax, t)
     return g
+
+
+def draw_spray(ax, cam: Camera, pos, fw, t: float, z: float) -> None:
+    """Gischt hinter einem Auto: graue Wolke, die nach hinten breiter und blasser wird.
+    Zufall pro Bild (Gischt flimmert auch in echt), aber reproduzierbar über t."""
+    rng = np.random.default_rng(int(round(t * 120)) % (2 ** 32))
+    fw = np.asarray(fw, dtype=float)
+    side = np.array([-fw[1], fw[0], 0.0])
+    k = rng.uniform(0.0, 1.0, SPRAY_POINTS) ** 1.5            # dichter direkt am Heck
+    back = CAR_LEN_M * 0.45 + k * SPRAY_M
+    Q = (np.asarray(pos)[None] - fw[None] * back[:, None]
+         + side[None] * (rng.normal(0, 1, SPRAY_POINTS) * (0.5 + 1.6 * k))[:, None]
+         + np.array([0, 0, 1.0])[None] * (0.2 + rng.uniform(0, 1, SPRAY_POINTS) * (0.6 + 1.6 * k))[:, None])
+    x, y, zc = cam.proj(Q)
+    m = zc > 2
+    if not m.any():
+        return
+    size = np.clip(16000.0 * (0.6 + 2.5 * k[m]) / zc[m] ** 1.3, 6, 1600)
+    alpha = np.clip(0.09 * (1 - k[m]) + 0.015, 0, 1)
+    rgba = np.column_stack([np.full((m.sum(), 3), 0.86), alpha])
+    ax.scatter(x[m], y[m], s=size, c=rgba, linewidths=0, zorder=z)
+
+
+def draw_rain(ax, t: float) -> None:
+    """Regenstriche über dem ganzen Bild. Feste Startpunkte, die mit der Zeit t nach
+    unten laufen – in der Zeitlupe fällt der Regen also mit langsamer (gewollt)."""
+    rng = np.random.default_rng(7)
+    x0 = rng.uniform(-0.6, 0.6, RAIN_STREAKS)
+    y0 = rng.uniform(0.0, 2.0, RAIN_STREAKS)
+    speed = RAIN_FALL * rng.uniform(0.8, 1.25, RAIN_STREAKS)
+    length = rng.uniform(0.035, 0.075, RAIN_STREAKS)
+    y = (y0 - t * speed) % 2.0 - 1.0
+    x = x0 + 0.08 * y                                          # leicht schräg (Fahrtwind)
+    segs = np.stack([np.column_stack([x, y]), np.column_stack([x - 0.1 * length, y - length])], axis=1)
+    ax.add_collection(LineCollection(segs, colors=[(0.85, 0.88, 0.92, 0.38)], linewidths=0.9, zorder=30))
 
 
 class MiniMap:

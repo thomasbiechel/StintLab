@@ -117,7 +117,7 @@ def render_gap_chase(data: dict, reel: dict, path: Path) -> Path:
     result = reel.get("result") or f"{a} holds on by {final:.3f} s"
 
     plt.rcParams["font.family"] = "sans-serif"
-    plt.rcParams["font.sans-serif"] = [resolve_font()]
+    plt.rcParams["font.sans-serif"] = [resolve_font(), "DejaVu Sans"]   # Ersatz für →, ▲▼ (fehlen in Barlow)
     fig = plt.figure(figsize=(WIDTH_PX / DPI, HEIGHT_PX / DPI), dpi=DPI, facecolor=COLORS["bg"])
 
     ax = fig.add_axes([0.14, 0.30, 0.78, 0.44])
