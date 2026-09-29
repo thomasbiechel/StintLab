@@ -79,7 +79,7 @@ def test_duel_rows_counts_wins_and_orients_winner_first():
             a, b = _q("AAA", 6, [80.0, 79.0, 78.2]), _q("BBB", 5, [80.2, 79.2, 78.0])
         sessions.append({"meeting_key": i, "place": str(i), "teams": {"AAA": "Ferrari", "BBB": "Ferrari"},
                          "results": [a, b]})
-    rows = duel_rows(sessions)
+    rows = duel_rows(sessions, min_duels=3)
     assert len(rows) == 1
     r = rows[0]
     assert (r["a"], r["b"], r["wins_a"], r["wins_b"], r["n"]) == ("AAA", "BBB", 3, 1, 4)

@@ -26,7 +26,8 @@ from statistics import median
 from stintlab.preview import team_name
 from stintlab.style import COLORS, style_axes, team_color
 
-MIN_DUELS = 3          # weniger gemeinsame Qualifyings → Paarung nicht gezeigt
+MIN_DUELS = 5          # weniger gemeinsame Qualifyings → Paarung nicht gezeigt
+                       # (3 war zu wenig: nach Fahrerwechseln standen 3–0-Paarungen ganz oben)
 
 
 def _times(r: dict) -> list:
@@ -108,11 +109,13 @@ def render_teammate_duel(ax, sessions: list[dict]) -> list[dict]:
     ax.axvline(0, color=COLORS["muted"], linewidth=0.8)
     ax.set_xlim(-lim, lim * 1.2)
     ax.set_xticks([t for t in ax.get_xticks() if 0 <= t <= lim * 1.2])     # links stehen die Namen
-    ax.set_ylim(-0.7, n - 0.3)
+    # unten Platz für die Fußnote lassen – sonst lag sie über der letzten Zeile
+    ax.set_ylim(-1.5, n - 0.3)
     ax.set_yticks([])
     ax.set_xlabel("Median gap to teammate in the last shared session (% of lap time)")
     total = len({s.get("meeting_key") for s in sessions})
-    ax.text(0.99, 0.01, f"{total} qualifyings · head-to-head = better quali position · "
-            f"pairs with < {MIN_DUELS} shared sessions left out", transform=ax.transAxes,
-            ha="right", va="bottom", fontsize=7.5, color=COLORS["muted"])
+    ax.text(0.99, 0.01, f"{total} qualifyings · head-to-head = better quali position\n"
+            f"pairs with fewer than {MIN_DUELS} shared qualifyings (driver swaps) left out",
+            transform=ax.transAxes, ha="right", va="bottom", fontsize=7.5, color=COLORS["muted"],
+            linespacing=1.5)
     return rows
