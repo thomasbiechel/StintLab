@@ -18,8 +18,10 @@ make_post.py – alles bleibt auch ohne Studio nutzbar.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -101,6 +103,21 @@ def drivers_of(meeting_key: int, stype: str) -> list[str]:
         return []
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def stories_for(meeting_key: int, stype: str, top: int = 10) -> list[dict]:
+    """Story-Finder (stintlab/stories.py) für ein Rennen/einen Sprint – wie find_stories.py."""
+    from stintlab.session import load_session
+    from stintlab.stories import find_stories
+    data = load_session(meeting_key, stype)
+    return [{"kind": x.kind, "score": x.score, "question": x.question, "facts": list(x.facts),
+             "slides": [dict(sl) for sl in x.slides]} for x in find_stories(data)[:top]]
+
+
+def with_id(entry: dict) -> dict:
+    """Jeder Eintrag bekommt eine feste ID – damit die Titel-Felder beim Umsortieren am Eintrag bleiben."""
+    return {**entry, "_id": uuid.uuid4().hex[:8]}
+
+
 def label(m: dict) -> str:
     return f"{str(m.get('date_start', ''))[:10]} · {m.get('location') or m.get('meeting_name')}"
 
@@ -175,8 +192,11 @@ def run_make_post(path: Path, refresh: bool) -> None:
     box = st.empty()
     lines: list[str] = []
     with st.spinner("Erzeuge … (Reels dauern ein paar Minuten)"):
+        # UTF-8 erzwingen: Unter Windows schreibt Python in eine Pipe sonst in cp1252 –
+        # dann scheitert schon das ✓ in make_post (UnicodeEncodeError)
+        env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
         proc = subprocess.Popen(cmd, cwd=REPO, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                                encoding="utf-8", errors="replace")
+                                encoding="utf-8", errors="replace", env=env)
         for line in proc.stdout:
             if "UserWarning" in line or "writer.grab_frame" in line or line.startswith("findfont"):
                 continue                      # Rauschen von matplotlib
@@ -204,25 +224,33 @@ def gallery(path: Path) -> None:
         st.info("Noch nichts erzeugt.")
 
 
-tab_new, tab_old, tab_ref = st.tabs(["➕ Neuer Post", "📁 Vorhandene Posts", "📚 Analysen"])
+if not cal:
+    st.error("Kein Kalender geladen (OpenF1 nicht erreichbar und nichts im Cache).")
+    st.stop()
+default = current_or_last(cal, now) or cal[0]
+c1, c2 = st.columns([2, 1])
+meeting = c1.selectbox("Wochenende", cal, cal.index(default), format_func=label)
+types = session_types(sessions(meeting["meeting_key"])) or ["R"]
+types = types + ["PREVIEW"]
+stype = c2.selectbox("Session", types, len(types) - 2 if "R" in types else 0,
+                     format_func=lambda t: SESSION_LABELS.get(t, t))
+drivers = drivers_of(meeting["meeting_key"], stype) if stype != "PREVIEW" else []
+st.session_state.setdefault("slides", [])
+st.session_state.setdefault("reels", [])
+# Ordner folgt Wochenende/Session – außer eine Story hat ihn gesetzt
+if st.session_state.get("folder_for") != (meeting["meeting_key"], stype):
+    st.session_state["folder_for"] = (meeting["meeting_key"], stype)
+    st.session_state["folder_input"] = default_folder(meeting, stype)
+# eine übernommene Story setzt den Ordner – das geht nur VOR dem Zeichnen des Feldes (daher über rerun)
+if "folder_pending" in st.session_state:
+    st.session_state["folder_input"] = st.session_state.pop("folder_pending")
+
+tab_new, tab_story, tab_old, tab_ref = st.tabs(["➕ Neuer Post", "🔎 Stories finden", "📁 Vorhandene Posts",
+                                                 "📚 Analysen"])
 
 # ── Neuer Post ───────────────────────────────────────────────────────────────
 
 with tab_new:
-    if not cal:
-        st.error("Kein Kalender geladen (OpenF1 nicht erreichbar und nichts im Cache).")
-        st.stop()
-    default = current_or_last(cal, now) or cal[0]
-    c1, c2 = st.columns([2, 1])
-    meeting = c1.selectbox("Wochenende", cal, cal.index(default), format_func=label)
-    types = session_types(sessions(meeting["meeting_key"])) or ["R"]
-    types = types + ["PREVIEW"]
-    stype = c2.selectbox("Session", types, len(types) - 2 if "R" in types else 0,
-                         format_func=lambda t: SESSION_LABELS.get(t, t))
-    drivers = drivers_of(meeting["meeting_key"], stype) if stype != "PREVIEW" else []
-
-    st.session_state.setdefault("slides", [])
-    st.session_state.setdefault("reels", [])
 
     left, right = st.columns([3, 2])
     with left:
@@ -243,7 +271,7 @@ with tab_new:
                     entry["subtitle"] = subtitle.strip()
                 if as_reel:
                     entry["reel"] = True
-                st.session_state.slides.append(entry)
+                st.session_state.slides.append(with_id(entry))
             except ValueError as exc:
                 st.error(str(exc))
 
@@ -261,7 +289,7 @@ with tab_new:
                     entry = reel_entry(r, rvals)
                     if any(v.strip() for v in cover.values()):
                         entry["cover"] = {k: v.strip() for k, v in cover.items() if v.strip()}
-                    st.session_state.reels.append(entry)
+                    st.session_state.reels.append(with_id(entry))
                 except ValueError as exc:
                     st.error(str(exc))
         else:
@@ -271,8 +299,21 @@ with tab_new:
         st.subheader("Dieser Post")
         for kind in ("slides", "reels"):
             for i, e in enumerate(list(st.session_state[kind])):
+                e.setdefault("_id", uuid.uuid4().hex[:8])
                 c_a, c_b, c_c, c_d = st.columns([6, 1, 1, 1])
-                c_a.write(f"**{e['analysis']}** · {e.get('title', '') or e.get('hook', '')}")
+                if kind == "slides":
+                    c_a.markdown(f"**{i + 1}. {e['analysis']}**")
+                    t = c_a.text_input("Titel", e.get("title", ""), key=f"t_{e['_id']}", label_visibility="collapsed",
+                                       placeholder="TITEL *")
+                    sub = c_a.text_input("Untertitel", e.get("subtitle", ""), key=f"u_{e['_id']}",
+                                         label_visibility="collapsed", placeholder="Untertitel (optional)")
+                    e["title"] = t.strip().upper()
+                    if sub.strip():
+                        e["subtitle"] = sub.strip()
+                    else:
+                        e.pop("subtitle", None)
+                else:
+                    c_a.write(f"**Reel: {e['analysis']}** · {e.get('hook', '')}")
                 if c_b.button("↑", key=f"up_{kind}_{i}", disabled=i == 0):
                     lst = st.session_state[kind]
                     lst[i - 1], lst[i] = lst[i], lst[i - 1]
@@ -287,9 +328,13 @@ with tab_new:
         if not (st.session_state.slides or st.session_state.reels):
             st.caption("Noch leer – links Slides oder Reels hinzufügen.")
 
-        folder = st.text_input("Ordner", default_folder(meeting, stype))
+        folder = st.text_input("Ordner", key="folder_input")
+        strip = lambda es: [{k: v for k, v in e.items() if k != "_id"} for e in es]
         config = {"session": {"meeting_key": int(meeting["meeting_key"]), "type": stype},
-                  "slides": st.session_state.slides, "reels": st.session_state.reels}
+                  "slides": strip(st.session_state.slides), "reels": strip(st.session_state.reels)}
+        missing = [i + 1 for i, e in enumerate(st.session_state.slides) if not e.get("title")]
+        if missing:
+            st.warning(f"Titel fehlt bei Slide {', '.join(map(str, missing))} – ohne Titel kein Speichern.")
         comment = f"{meeting.get('location')} {str(meeting.get('date_start', ''))[:4]} · {SESSION_LABELS.get(stype, stype)} – erstellt im StintLab Studio"
         toml_text = to_toml(config, comment)
         with st.expander("post.toml ansehen"):
@@ -299,7 +344,7 @@ with tab_new:
         if path.exists():
             st.warning(f"{folder}/post.toml existiert schon – Speichern überschreibt sie.")
         c_s, c_r, c_x = st.columns(3)
-        empty = not (st.session_state.slides or st.session_state.reels)
+        empty = not (st.session_state.slides or st.session_state.reels) or bool(missing)
         if c_s.button("💾 Speichern", disabled=empty):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(toml_text, encoding="utf-8")
@@ -312,6 +357,44 @@ with tab_new:
         if c_x.button("🗑 Alles leeren", disabled=empty):
             st.session_state.slides, st.session_state.reels = [], []
             st.rerun()
+
+# ── Stories finden ───────────────────────────────────────────────────────────
+
+with tab_story:
+    st.caption("Sucht in den Daten nach Fragen für die tiefe Analyse (Zweikämpfe ohne Überholen, Zwischenfälle, "
+               "Aufholjagden, Safety Car, knappe Zieleinläufe …). Leitfaden: Stellen sich Fans diese Frage? "
+               "Sieht man die Antwort im TV? Wenn nicht → nächste Story.")
+    if st.session_state.get("flash"):
+        st.success(st.session_state.pop("flash"))
+    if stype not in ("R", "S"):
+        st.info("Stories gibt es für Rennen und Sprint – oben „Race“ oder „Sprint“ wählen.")
+    else:
+        top = st.slider("Anzahl Kandidaten", 3, 15, 8)
+        if st.button("🔎 Stories suchen", type="primary"):
+            with st.spinner("Lade das Rennen und suche … (beim ersten Mal etwas länger)"):
+                try:
+                    st.session_state["stories"] = (meeting["meeting_key"], stype, stories_for(meeting["meeting_key"], stype, top))
+                except Exception as exc:
+                    st.error(f"Stories nicht gefunden: {exc}")
+        found = st.session_state.get("stories")
+        if found and found[:2] == (meeting["meeting_key"], stype):
+            if not found[2]:
+                st.info("Keine Kandidaten gefunden.")
+            for n, sto in enumerate(found[2], start=1):
+                with st.container(border=True):
+                    st.markdown(f"**{n}. {sto['question']}**")
+                    st.caption(f"{sto['kind']} · Score {sto['score']:.1f} · Slides: "
+                               + " → ".join(sl["analysis"] for sl in sto["slides"]))
+                    for f in sto["facts"]:
+                        st.write(f"· {f}")
+                    if st.button("→ Als Post übernehmen", key=f"take_{n}", disabled=not sto["slides"]):
+                        st.session_state.slides = [with_id({**sl, "title": sto["question"].upper() if k == 0 else ""})
+                                                   for k, sl in enumerate(sto["slides"])]
+                        st.session_state.reels = []
+                        st.session_state["folder_pending"] = default_folder(meeting, stype, "-story")
+                        st.session_state["flash"] = ("Übernommen – im Reiter „➕ Neuer Post“ die Titel der übrigen "
+                                                     "Slides ergänzen und erzeugen. Slide 1 hat die Frage als Titel (kürzen!).")
+                        st.rerun()
 
 # ── Vorhandene Posts ─────────────────────────────────────────────────────────
 
