@@ -29,6 +29,8 @@ from stintlab.reels.ghost_lap import render_ghost_lap
 from stintlab.analyses.telemetry import render_telemetry
 from stintlab.analyses.championship import render_championship, render_title_fight
 from stintlab.analyses.teammate_duel import render_teammate_duel
+from stintlab.analyses.starts import render_best_starters
+from stintlab.analyses.sat_sun import render_saturday_sunday
 from stintlab.analyses.tow_effect import render_tow_effect, render_tow_split
 
 
@@ -165,6 +167,27 @@ def _title_fight(ax, data, slide):
     render_title_fight(ax, data, top)
 
 
+def _top(slide):
+    top = slide.get("top", 20)
+    if not isinstance(top, int) or top < 3:
+        raise ValueError("top muss eine ganze Zahl ab 3 sein, z. B. top = 15")
+    return top
+
+
+def _best_starters(ax, data, slide):
+    # alle Rennen des Jahres bis einschließlich dieses Wochenendes (season.py)
+    from stintlab.season import race_session, season_sessions
+    render_best_starters(ax, season_sessions(data["meeting_key"], "R", load=race_session), _top(slide))
+
+
+def _saturday_sunday(ax, data, slide):
+    from stintlab.season import race_session, season_sessions
+    races = season_sessions(data["meeting_key"], "R", load=race_session)
+    quali = {q["meeting_key"]: q for q in season_sessions(data["meeting_key"], "Q")}
+    pairs = [(r, quali[r["meeting_key"]]) for r in races if r["meeting_key"] in quali]
+    render_saturday_sunday(ax, pairs, _top(slide))
+
+
 def _teammate_duel(ax, data, slide):
     # alle Qualifyings des Jahres bis einschließlich dieses Wochenendes (season.py)
     from stintlab.season import season_sessions
@@ -181,6 +204,8 @@ ANALYSES = {
     "championship": {"render": _championship, "sessions": {"R", "S"}},
     "title_fight": {"render": _title_fight, "sessions": {"R", "S"}},
     "teammate_duel": {"render": _teammate_duel, "sessions": {"Q"}},
+    "best_starters": {"render": _best_starters, "sessions": {"R"}},
+    "saturday_sunday": {"render": _saturday_sunday, "sessions": {"R"}},
     "results": {"render": _results, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "sectors": {"render": _sectors, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
     "telemetry": {"render": _telemetry, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},

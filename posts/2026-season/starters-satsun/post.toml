@@ -1,0 +1,18 @@
+# Saison-Analysen Rennen – alle Rennen 2026 bis einschließlich Baku.
+# Beim ersten Mal lädt jedes Rennen Runden, Rennleitung, Stopps, Ergebnis + Startaufstellung
+# (~0,6 MB pro Rennen, danach im Cache). Späterer Stand: meeting_key auf das letzte Wochenende.
+[session]
+meeting_key = 1295
+type = "R"
+
+[[slides]]
+analysis = "best_starters"
+reel     = true          # zusätzlich als Reel: Balken bauen sich auf
+title    = "WHO ARE THE BEST STARTERS?"
+subtitle = "Lap-1 places gained, compared with what each grid slot usually gains"
+
+[[slides]]
+analysis = "saturday_sunday"
+reel     = true
+title    = "SATURDAY OR SUNDAY DRIVER?"
+subtitle = "Race-pace rank vs. qualifying rank among the same drivers, average per race"

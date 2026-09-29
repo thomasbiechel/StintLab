@@ -109,13 +109,14 @@ def render_teammate_duel(ax, sessions: list[dict]) -> list[dict]:
     ax.axvline(0, color=COLORS["muted"], linewidth=0.8)
     ax.set_xlim(-lim, lim * 1.2)
     ax.set_xticks([t for t in ax.get_xticks() if 0 <= t <= lim * 1.2])     # links stehen die Namen
-    # unten Platz für die Fußnote lassen – sonst lag sie über der letzten Zeile
-    ax.set_ylim(-1.5, n - 0.3)
+    # Platz für die zweizeilige Fußnote, wächst mit der Zeilenzahl (sonst überlappt sie)
+    ax.set_ylim(-0.7 - 0.09 * n - 0.6, n - 0.3)
     ax.set_yticks([])
     ax.set_xlabel("Median gap to teammate in the last shared session (% of lap time)")
     total = len({s.get("meeting_key") for s in sessions})
-    ax.text(0.99, 0.01, f"{total} qualifyings · head-to-head = better quali position\n"
+    note = ax.text(0.99, 0.01, f"{total} qualifyings · head-to-head = better quali position\n"
             f"pairs with fewer than {MIN_DUELS} shared qualifyings (driver swaps) left out",
             transform=ax.transAxes, ha="right", va="bottom", fontsize=7.5, color=COLORS["muted"],
             linespacing=1.5)
+    note.keep_font = True
     return rows

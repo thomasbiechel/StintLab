@@ -5,3 +5,4 @@ requests>=2.31
 python-dotenv>=1.0
 load_dotenv
 imageio-ffmpeg>=0.5
+streamlit>=1.40   # Studio-Oberfläche (streamlit run studio.py)

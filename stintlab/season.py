@@ -103,3 +103,26 @@ def season_sessions(meeting_key: int, session_type: str, refresh: bool = False, 
         if s.get("results"):
             out.append(s)
     return out
+
+
+# Rennen „leicht“: Runden, Rennleitung, Boxenstopps, Ergebnis, Fahrer + Startaufstellung –
+# ohne Abstände/Positionen (intervals ~3 MB pro Rennen) und ohne Telemetrie.
+RACE_ENDPOINTS = ("drivers", "laps", "race_control", "pit", "session_result")
+
+
+def race_session(meeting_key: int, session_type: str = "R", refresh: bool = False, fetch=None) -> dict:
+    """Rennen im Format von session.build_session_data (lap_ends, laps, pit_stops, results …)
+    plus "grid" (Startaufstellung) und "place". Für Saison-Analysen über viele Rennen."""
+    from stintlab.session import build_grid, build_session_data
+    fetch = fetch or openf1.cached_fetch
+    key = openf1.find_session_key(meeting_key, session_type, refresh)
+    raw = {ep: fetch(ep, key, refresh) for ep in RACE_ENDPOINTS}
+    raw.update({"intervals": [], "position": [], "stints": []})
+    data = build_session_data(raw)
+    grid_type = {"R": "Q", "S": "SQ"}[session_type]
+    grid_key = openf1.find_session_key(meeting_key, grid_type, refresh)
+    data["grid"] = build_grid(fetch("starting_grid", grid_key, refresh), data["numbers"])
+    m = openf1.meeting_by_key(meeting_key) or {}
+    data.update({"meeting_key": meeting_key, "session_key": key, "session_type": session_type,
+                 "place": m.get("location") or m.get("circuit_short_name") or str(meeting_key)})
+    return data
