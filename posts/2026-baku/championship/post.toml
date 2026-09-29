@@ -1,0 +1,25 @@
+# WM-Status nach dem Rennen in Baku – Frage: Wer kann noch Weltmeister werden?
+# Punkte kommen direkt von OpenF1 (championship_drivers/_teams). Kurz nach dem Rennen
+# fehlen evtl. noch Strafen → dann mit --refresh neu laden.
+[session]
+meeting_key = 1295
+type = "R"
+
+[[slides]]
+analysis = "title_fight"
+top      = 8
+title    = "WHO CAN STILL BECOME WORLD CHAMPION?"
+subtitle = "Points now + the maximum still possible · assumes the leader scores nothing from here"
+
+[[slides]]
+analysis = "championship"
+kind     = "drivers"
+top      = 10
+title    = "ANTONELLI LEADS BY 66 POINTS"
+subtitle = "Drivers' championship after Baku · lighter part = points from this race"
+
+[[slides]]
+analysis = "championship"
+kind     = "teams"
+title    = "MERCEDES 160 POINTS CLEAR"
+subtitle = "Constructors' championship after Baku"

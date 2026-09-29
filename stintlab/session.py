@@ -187,6 +187,7 @@ def load_session(meeting_key: int, session_type: str, refresh: bool = False) -> 
     data = build_session_data(raw)
     data["session_type"] = session_type
     data["session_key"] = session_key
+    data["meeting_key"] = meeting_key      # Saison-Analysen brauchen das Wochenende (season.py)
     data["grid"] = {}
     # Startaufstellung: hängt bei OpenF1 am QUALIFYING, nicht am Rennen, und
     # enthält Strafen (Madring 2026: SAI Quali 17., Start 20.)

@@ -1,0 +1,11 @@
+# Teamkollegen-Duell im Qualifying – alle Qualifyings 2026 bis einschließlich Baku.
+# Beim ersten Mal lädt das Ergebnis + Fahrerliste jedes Qualifyings von OpenF1 (klein, dann im Cache).
+# Für einen späteren Stand einfach meeting_key auf das letzte Wochenende setzen.
+[session]
+meeting_key = 1295
+type = "Q"
+
+[[slides]]
+analysis = "teammate_duel"
+title    = "WHO BEATS THEIR TEAMMATE?"
+subtitle = "2026 qualifying head-to-heads · bar = median gap in the last session both reached"

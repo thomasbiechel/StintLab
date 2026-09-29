@@ -27,6 +27,8 @@ from stintlab.reels.race_story import render_race_story
 from stintlab.reels.comeback import render_comeback
 from stintlab.reels.ghost_lap import render_ghost_lap
 from stintlab.analyses.telemetry import render_telemetry
+from stintlab.analyses.championship import render_championship, render_title_fight
+from stintlab.analyses.teammate_duel import render_teammate_duel
 from stintlab.analyses.tow_effect import render_tow_effect, render_tow_split
 
 
@@ -146,6 +148,29 @@ def _results(ax, data, slide):
     render_results(ax, data)
 
 
+def _championship(ax, data, slide):
+    kind = slide.get("kind", "drivers")
+    if kind not in ("drivers", "teams"):
+        raise ValueError('kind muss "drivers" oder "teams" sein')
+    top = slide.get("top", 10 if kind == "drivers" else None)
+    if top is not None and (not isinstance(top, int) or top < 3):
+        raise ValueError("top muss eine ganze Zahl ab 3 sein, z. B. top = 10")
+    render_championship(ax, data, kind, top)
+
+
+def _title_fight(ax, data, slide):
+    top = slide.get("top", 8)
+    if not isinstance(top, int) or top < 2:
+        raise ValueError("top muss eine ganze Zahl ab 2 sein, z. B. top = 8")
+    render_title_fight(ax, data, top)
+
+
+def _teammate_duel(ax, data, slide):
+    # alle Qualifyings des Jahres bis einschließlich dieses Wochenendes (season.py)
+    from stintlab.season import season_sessions
+    render_teammate_duel(ax, season_sessions(data["meeting_key"], "Q"))
+
+
 ANALYSES = {
     "podium": {"render": _podium, "sessions": {"Q", "SQ", "R", "S"}},
     "gap_between": {"render": _gap_between, "sessions": {"R", "S"}},
@@ -153,6 +178,9 @@ ANALYSES = {
     "lap_times": {"render": _lap_times, "sessions": {"R", "S", "FP1", "FP2", "FP3"}},
     "long_runs": {"render": _long_runs, "sessions": {"FP1", "FP2", "FP3"}},
     "ideal_lap": {"render": _ideal_lap, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
+    "championship": {"render": _championship, "sessions": {"R", "S"}},
+    "title_fight": {"render": _title_fight, "sessions": {"R", "S"}},
+    "teammate_duel": {"render": _teammate_duel, "sessions": {"Q"}},
     "results": {"render": _results, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "sectors": {"render": _sectors, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
     "telemetry": {"render": _telemetry, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ"}},
