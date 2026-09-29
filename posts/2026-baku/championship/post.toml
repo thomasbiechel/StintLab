@@ -7,12 +7,14 @@ type = "R"
 
 [[slides]]
 analysis = "title_fight"
+reel     = true 
 top      = 8
 title    = "WHO CAN STILL BECOME WORLD CHAMPION?"
 subtitle = "Points now + the maximum still possible · assumes the leader scores nothing from here"
 
 [[slides]]
 analysis = "championship"
+reel     = true 
 kind     = "drivers"
 top      = 10
 title    = "ANTONELLI LEADS BY 66 POINTS"
@@ -20,6 +22,7 @@ subtitle = "Drivers' championship after Baku · lighter part = points from this 
 
 [[slides]]
 analysis = "championship"
+reel     = true 
 kind     = "teams"
 title    = "MERCEDES 160 POINTS CLEAR"
 subtitle = "Constructors' championship after Baku"

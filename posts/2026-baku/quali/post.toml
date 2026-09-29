@@ -5,6 +5,7 @@ type = "Q"
 #Slide 1: offizielles Qualifying-Ergebnis
 [[slides]]
 analysis = "results"
+reel     = true 
 title    = "RUSSELL ON POLE BY 0.837 S"
 subtitle = "Official qualifying classification · fastest time in each part in purple"
 
