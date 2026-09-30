@@ -21,6 +21,26 @@ ABLAUF (1080 × 1920, 9:16, 60 Bilder/s, ~18 s):
                           die Uhr den Abstand erreicht (max. RESULT_MAX_S). Kein
                           Logo-Screen – das Reel läuft direkt in die Schleife.
 
+ÜBERARBEITUNG 30.09.2026 (nach der Auswertung des São-Paulo-Rewinds: 0 Kommentare,
+0,4 % geteilt, Antwort nur in der Caption) – gilt für alle Comeback-Reels:
+  - WO ER ÜBERHOLT HAT: Unter der Positionskurve eine Streckenkarte. Jedes Manöver
+    auf der Strecke ploppt dort als Punkt mit dem Kürzel des Gegners auf, in der
+    Runde, in der es passiert (Rhythmus wie die Sektor-Chips im Gain/Loss-Reel).
+    Ort = Stelle, an der der Abstand das Vorzeichen wechselt (pass_time), für jeden
+    Gegner aus dessen Positionsdaten. Runde 1 wird nicht verortet (Startgetümmel,
+    Autos in den Daten zu eng) – nur als „LAP 1: +n“ an der Startlinie. Am Ende der
+    Kurve markiert ein Ring die Stelle mit den meisten Manövern („7 of 17 here“).
+  - ZWEI AKTE: Hat er seinen Zielplatz schon einmal erreicht, wieder verloren und
+    zurückgeholt (Monza 2026: P1 in Runde 18, Führung weg in Runde 23, nach dem
+    Stopp P6, Sieg in Runde 50), bekommt der Bruch einen roten Blitz mit Banner
+    („P1 LOST · RUS PASSES“, „PIT STOP · DOWN TO P6“), danach steht „AGAIN: P6 → P1“
+    über der Kurve, die Punkte des zweiten Akts sind lila. Standard-Haken dann:
+    „P1 after 18 laps – then he had to do it all again“.
+  - FRAGE AM ENDE (question = "…", "" = keine): letztes Bild vor der Schleife.
+  - PFEIL „→“: fehlt in Barlow; unter Windows setzte matplotlib dafür ein
+    Platzhalter-Kästchen („ARROWS 2190–21FF“, São Paulo Rewind). Er wird jetzt
+    als Mathe-Pfeil gesetzt ($\rightarrow$, Schrift von matplotlib, immer da).
+
 REIHENFOLGE order = "moment_first" (post.toml): Hook → Manöver → Positionskurve
 als Rückblende („HOW HE GOT THERE“, bis zur letzten Runde) → Ziel → Auflösung.
 Das Manöver schließt nahtlos an den Hook an (kein Zurückspringen), das Reel
@@ -66,8 +86,17 @@ from stintlab.reels.race_story import live_gap, smooth
 from stintlab.style import COLORS, NEUTRAL_STYLE, neutral_legend, resolve_font, team_color
 
 WIDTH_PX, HEIGHT_PX, DPI, FPS = 1080, 1920, 150, 60
-HOOK_S, CHART_S, PASS_S, FINISH_S, RESULT_S, RESULT_MAX_S = 3.5, 5.0, 6.5, 4.0, 2.0, 4.0
-FINISH_LEAD_S = 2.2      # Ziel-Szene beginnt so viele Sekunden vor der Linie
+HOOK_S, CHART_S, PASS_S, FINISH_S, RESULT_S, RESULT_MAX_S = 3.5, 7.0, 6.5, 3.0, 1.2, 4.0
+# FINISH_S 4 → 3 s, RESULT_S 2 → 1,2 s und kein Warten mehr, bis der Zweite die Linie erreicht
+# (Monza 2026: ~4 s, in denen nichts passierte). Der offizielle Abstand steht direkt nach der Linie.
+# CHART_S 5 → 7 s: die Überhol-Karte braucht Zeit, damit die Punkte einzeln aufploppen
+ASK_S = 2.5              # Frage an die Zuschauer am Ende
+ACT_BREAK_LAPS = 2.0     # so viele Runden (Kurvenzeit) steht das rote Banner beim Bruch
+HOTSPOT_M = 300.0        # Manöver innerhalb dieser Strecke zählen als „dieselbe Stelle“
+MAP_LABEL_LAPS = 3.0     # so viele Runden bleibt das Kürzel am Punkt stehen
+ACT2_COLOR = COLORS["accent"]
+BREAK_RED = "#e10600"
+FINISH_LEAD_S = 1.6      # Ziel-Szene beginnt so viele Sekunden vor der Linie
 HOOK_CUT_S = 0.5         # Hook endet so viele Sekunden VOR dem Vorbeiziehen
 COVER_AFTER_PASS_S = 0.25   # Titelbild: kurz nach dem Überholen, beide Autos nebeneinander
 PASS_LEAD_S = 2.0        # Manöver-Szene beginnt so viele Sekunden davor und läuft ~3 s danach weiter
@@ -76,7 +105,8 @@ SLOWMO = 0.5             # um den Moment herum auf 50 % Tempo
 SLOWMO_WIDTH_S = 1.0
 RED_FLAG_STOP_S = 300.0
 LABEL_LAPS = 5.0         # so viele Runden lang bleibt ein Kürzel an der Kurve stehen
-CHART_BOX = [0.14, 0.27, 0.78, 0.45]
+CHART_BOX = [0.14, 0.535, 0.78, 0.215]     # oben: Positionskurve (vorher 0.27–0.72, jetzt mit Karte darunter)
+PASSMAP_BOX = [0.06, 0.235, 0.88, 0.205]   # unten: wo er überholt hat (breit → Strecke wird quer gelegt)
 WHITE = "#ffffff"
 STROKE = [pe.withStroke(linewidth=5, foreground="black", alpha=0.75)]
 
@@ -171,6 +201,74 @@ def pass_time(scene, data: dict, drv: str, lap: int) -> float:
     return float(ts[i] + (ts[i + 1] - ts[i]) * g[i] / (g[i] - g[i + 1]))
 
 
+def pass_locations(scene, data: dict, drv: str, events: list[dict]) -> list[dict]:
+    """Ort jedes Überholmanövers auf der Strecke (ab Runde 2): Ereignis + "t" (s ab scene.t0),
+    "i" (Index auf scene.P), "s" (Meter ab Ziellinie). Manöver, deren Vorzeichenwechsel
+    nicht in den Positionsdaten liegt, fallen mit Hinweis weg."""
+    from types import SimpleNamespace
+    from stintlab import openf1
+    from stintlab.reels.race_story import Track
+    tracks, out = {}, []
+    for e in events:
+        if not (e["gain"] and e["kind"] == "track") or e["lap"] < 2:
+            continue
+        r = e["rival"]
+        try:
+            if r not in tracks:
+                loc = data.get("location", {}).get(r) or openf1.cached_fetch_driver(
+                    "location", data["session_key"], data["numbers"][r])
+                tracks[r] = Track(loc, scene.t0, rotate=False)
+            pair = SimpleNamespace(ta=tracks[r], tb=scene.tb, scale=scene.scale, t0=scene.t0)
+            t = pass_time(pair, data, drv, e["lap"])
+        except Exception as exc:
+            print(f"    ℹ Ort des Manövers gegen {r} (Runde {e['lap']}) nicht gefunden: {exc}")
+            continue
+        x, y = scene.tb.at(t)
+        px, py = float(x[0]) / scene.scale, float(y[0]) / scene.scale
+        i = int(np.argmin(np.hypot(scene.P[:, 0] - px, scene.P[:, 1] - py)))
+        out.append({**e, "t": t, "i": i, "s": float(scene.cum[i])})
+    return out
+
+
+def hotspot(locs: list[dict], length: float, window: float = HOTSPOT_M) -> dict | None:
+    """Stelle mit den meisten Manövern: {"n", "total", "i"} – None bei weniger als 3 Manövern
+    oder wenn keine Stelle mehr als eins hat."""
+    if len(locs) < 3:
+        return None
+    s = np.array([l["s"] for l in locs])
+    best_n, best_k = 0, 0
+    for k, c in enumerate(s):
+        d = np.abs((s - c + length / 2) % length - length / 2)     # Abstand auf der geschlossenen Runde
+        n = int((d <= window / 2).sum())
+        if n > best_n:
+            best_n, best_k = n, k
+    if best_n < 2:
+        return None
+    return {"n": best_n, "total": len(locs), "i": locs[best_k]["i"]}
+
+
+def acts(mine: dict[int, int], laps: list[int], final: int, decisive_lap: int, own_pits: list[int],
+         events: list[dict]) -> dict | None:
+    """Zwei Akte: Zielplatz erreicht, verloren, zurückgeholt. {"first", "lost", "lost_to", "low",
+    "pit"} – sonst None."""
+    first = next((n for n in laps if mine[n] == final), None)
+    if first is None or first >= decisive_lap:
+        return None
+    lost = next((n for n in laps if n > first and mine[n] != final), None)
+    if lost is None or lost >= decisive_lap:
+        return None
+    lost_to = next((e["rival"] for e in events if e["lap"] == lost and not e["gain"] and e["kind"] == "track"),
+                   None)
+    low = max(mine[n] for n in laps if lost <= n <= decisive_lap)
+    pit = next((n for n in own_pits if lost <= n < decisive_lap), None)
+    return {"first": first, "lost": lost, "lost_to": lost_to, "low": low, "pit": pit}
+
+
+def arrow(text: str) -> str:
+    """„→“ als Mathe-Pfeil – Barlow hat keinen, sonst Platzhalter-Kästchen (Windows)."""
+    return text.replace("→", r"$\rightarrow$")
+
+
 def finish_time(scene, data: dict, drv: str) -> float:
     """Sekunde (ab scene.t0), in der drv in seiner letzten Runde die Ziellinie
     (Anfang der Referenzrunde, scene.P[0]) überquert."""
@@ -257,8 +355,7 @@ def prepare(data: dict, reel: dict) -> dict:
     t_fin = finish_time(scene, data, drv)
     finish_times = slowmo_times(t_fin, FINISH_S, lead=FINISH_LEAD_S)
     runner = runner_up(data, drv)
-    after = finish_times[-1] - t_fin          # echte Sekunden nach der Linie am Ende der Ziel-Szene
-    res_s = float(np.clip(runner[1] - after + 0.6, RESULT_S, RESULT_MAX_S)) if runner else RESULT_S
+    res_s = RESULT_S               # früher: bis der Zweite die Linie erreicht (max. RESULT_MAX_S) – zu lang
     result_times = finish_times[-1] + np.arange(1, int(res_s * FPS) + 1) / FPS
     gaps = {k: smooth(np.array([signed_gap(scene, t) for t in ts]), 9)
             for k, ts in (("hook", hook_times), ("pass", pass_times))}
@@ -338,7 +435,7 @@ def render_comeback(data: dict, reel: dict, path: Path) -> Path:
     # Hatte er den Zielplatz schon einmal und hat ihn wieder verloren? Dann ist das die Story.
     first_reach = next((n for n in laps if mine[n] == prep["final"]), None)
     again = first_reach is not None and any(mine[n] != prep["final"] for n in laps if first_reach < n < lap)
-    hook = reel.get("hook") or (f"P{prep['start']} → P{prep['final']} – then he had to do it again" if again else
+    hook = reel.get("hook") or (f"P{prep['final']} after {first_reach} laps – then he had to do it all again" if again else
                                 f"P{prep['start']} → P{prep['final']} – {prep['n_track']} places gained on track")
     hook_1, _, hook_2 = hook.partition(" – ")
     result = reel.get("result") or f"P{prep['start']} → P{prep['final']}"
@@ -402,10 +499,72 @@ def render_comeback(data: dict, reel: dict, path: Path) -> Path:
     xs_all = np.array(laps, dtype=float)
     ys_all = np.array([mine[n] for n in laps], dtype=float)
 
+    # ── Wo er überholt hat (Karte unter der Kurve) ──────────────────────────
+    act = acts(mine, laps, prep["final"], lap, prep["own_pits"], events)
+    chart_hi = last_lap if reel.get("order", "classic") == "moment_first" else max(laps[0], lap - 1)
+    plocs = [l for l in pass_locations(scene, data, drv, events) if l["lap"] <= chart_hi]
+    print(f"    Überhol-Karte: {len(plocs)} Manöver verortet"
+          + (f" · zwei Akte: Platz verloren Runde {act['lost']}, danach bis P{act['low']}" if act else ""))
+    MP = scene.P[:, :2].copy()
+    # Drehen, damit die Strecke den BREITEN Kasten füllt (needs_rotation ist für hochkant gedacht –
+    # Monza stand sonst schmal und klein in der Mitte, „verschwommen“)
+    if np.ptp(MP[:, 1]) > np.ptp(MP[:, 0]):
+        MP = np.column_stack([MP[:, 1], -MP[:, 0]])
+    ax_pm = fig.add_axes(PASSMAP_BOX)
+    ax_pm.set_aspect("equal")
+    ax_pm.axis("off")
+    ax_pm.plot(MP[:, 0], MP[:, 1], color="#6b7080", linewidth=10, solid_capstyle="round", zorder=1)
+    ax_pm.plot(MP[:, 0], MP[:, 1], color="#2b2f3a", linewidth=6.5, solid_capstyle="round", zorder=2)
+    ax_pm.scatter([MP[0, 0]], [MP[0, 1]], s=40, marker="s", color="white", zorder=3)
+    span = float(max(np.ptp(MP[:, 0]), np.ptp(MP[:, 1])))
+    pm_dots, pm_labels = [], []
+    for k, l in enumerate(plocs):
+        c = ACT2_COLOR if act and l["lap"] > act["lost"] else col
+        x, y = MP[l["i"]]
+        pm_dots.append(ax_pm.scatter([x], [y], s=90, color=c, edgecolor="white", linewidth=1.2, zorder=5,
+                                     visible=False))
+        off = 0.035 * span * (1 if k % 2 == 0 else -1)          # abwechselnd links/rechts gegen Überlappen
+        pm_labels.append(ax_pm.text(x + off, y, l["rival"], fontsize=10, fontweight="bold", color=ink(c),
+                                    ha="left" if off > 0 else "right", va="center", zorder=6, visible=False,
+                                    bbox={"boxstyle": "round,pad=0.22", "facecolor": c, "edgecolor": "none"}))
+    lap1 = sum(1 for e in events if e["lap"] == 1 and e["gain"] and e["kind"] == "track")
+    pm_lap1 = ax_pm.text(MP[0, 0], MP[0, 1] + 0.06 * span, f"LAP 1: +{lap1}" if lap1 else "", fontsize=10,
+                         fontweight="bold", color=WHITE, ha="center", va="bottom", zorder=6, visible=False,
+                         path_effects=STROKE)
+    hot = hotspot(plocs, float(scene.cum[-1]))
+    pm_ring = ax_pm.scatter([MP[hot["i"], 0]] if hot else [], [MP[hot["i"], 1]] if hot else [], s=1500,
+                            facecolor="none", edgecolor=WHITE, linewidth=2.2, zorder=7, visible=False)
+    t_hot = fig.text(0.5, 0.215, f"{hot['n']} of {hot['total']} passes at one spot" if hot else "",
+                     ha="center", va="top", fontsize=15, fontweight="bold", color=WHITE, path_effects=STROKE)
+    pm_legend = []
+    if act:
+        pm_legend = [fig.text(0.06, 0.462, f"1ST: P{prep['start']} {arrow('→')} P{prep['final']}", fontsize=10,
+                              fontweight="bold", color=ink(col), va="top",
+                              bbox={"boxstyle": "round,pad=0.3", "facecolor": col, "edgecolor": "none"}),
+                     fig.text(0.94, 0.462, f"2ND: P{act['low']} {arrow('→')} P{prep['final']}", fontsize=10,
+                              fontweight="bold", color=ink(ACT2_COLOR), va="top", ha="right",
+                              bbox={"boxstyle": "round,pad=0.3", "facecolor": ACT2_COLOR, "edgecolor": "none"})]
+    t_break = fig.text(0.5, 0.768, "", ha="center", va="center", fontsize=17, fontweight="black", color=WHITE,
+                       zorder=21, bbox={"boxstyle": "square,pad=0.4", "facecolor": BREAK_RED, "edgecolor": "none"})
+    flash = fig.add_artist(plt.Rectangle((0, 0), 1, 1, transform=fig.transFigure, color=BREAK_RED, alpha=0.0,
+                                         zorder=20))
+
+    # ── Frage an die Zuschauer ──────────────────────────────────────────────
+    default_q = ("Which comeback was harder – the first or the second?" if act else "Drive of the season?")
+    question = reel.get("question", default_q)
+    if not isinstance(question, str):
+        raise ValueError('question muss ein Text sein, z. B. question = "Drive of the season?" (oder "" = keine)')
+    t_ask = [fig.text(0.5, 0.65, "YOUR TURN", ha="center", va="center", fontsize=13, fontweight="bold",
+                      color=COLORS["muted"]),
+             fig.text(0.5, 0.58, arrow(question), ha="center", va="center", fontsize=28 if len(question) < 30 else 20,
+                      fontweight="bold", color=WHITE),
+             fig.text(0.5, 0.52, "Tell us in the comments", ha="center", va="center", fontsize=20,
+                      fontweight="bold", color=COLORS["accent"])]
+
     # ── Texte ────────────────────────────────────────────────────────────────
-    t_hook1 = fig.text(0.5, 0.905, hook_1, ha="center", va="center", fontsize=58 if len(hook_1) < 12 else 36,
+    t_hook1 = fig.text(0.5, 0.905, arrow(hook_1), ha="center", va="center", fontsize=58 if len(hook_1) < 12 else 36,
                        fontweight="black", color=WHITE, path_effects=STROKE)
-    t_hook2 = fig.text(0.5, 0.848, hook_2, ha="center", va="center", fontsize=22 if len(hook_2) < 30 else 17,
+    t_hook2 = fig.text(0.5, 0.848, arrow(hook_2), ha="center", va="center", fontsize=22 if len(hook_2) < 30 else 17,
                        fontweight="bold", color=WHITE, path_effects=STROKE)
     t_tag = fig.text(0.5, 0.805, "", ha="center", va="center", fontsize=12, fontweight="bold", color=ink(col),
                      bbox={"boxstyle": "round,pad=0.45", "facecolor": col, "edgecolor": "none"})
@@ -417,14 +576,14 @@ def render_comeback(data: dict, reel: dict, path: Path) -> Path:
     t_big = fig.text(0.5, 0.885, "", ha="center", va="center", fontsize=72, fontweight="black", color=WHITE)
     t_sub = fig.text(0.5, 0.815, "", ha="center", va="center", fontsize=18, color=COLORS["muted"])
     t_tense = fig.text(0.5, 0.768, "", ha="center", va="center", fontsize=18, fontweight="bold", color=WHITE)
-    t_count = fig.text(0.5, 0.165, "", ha="center", va="center", fontsize=21, fontweight="bold", color=WHITE)
-    t_res1 = fig.text(0.5, 0.135, result, ha="center", va="center", fontsize=46, fontweight="black", color=WHITE,
+    t_count = fig.text(0.5, 0.487, "", ha="center", va="center", fontsize=17, fontweight="bold", color=WHITE)
+    t_res1 = fig.text(0.5, 0.135, arrow(result), ha="center", va="center", fontsize=46, fontweight="black", color=WHITE,
                       path_effects=STROKE)
-    t_res2 = fig.text(0.5, 0.088, result_sub, ha="center", va="center", fontsize=14, fontweight="bold",
+    t_res2 = fig.text(0.5, 0.088, arrow(result_sub), ha="center", va="center", fontsize=14, fontweight="bold",
                       color=WHITE, path_effects=STROKE, wrap=True)
     fig.text(0.94, 0.965, "STINTLAB", ha="right", va="center", fontsize=11, fontweight="bold",
              color=COLORS["accent"], path_effects=STROKE)
-    t_foot = fig.text(0.06, 0.225, "", ha="left", va="top", fontsize=7.5, color=COLORS["muted"], linespacing=1.5)
+    t_foot = fig.text(0.06, 0.19, "", ha="left", va="top", fontsize=7.5, color=COLORS["muted"], linespacing=1.5)
     t_fin_gap = fig.text(0.5, 0.235, "", ha="center", va="center", fontsize=40, fontweight="black", color=WHITE,
                          path_effects=STROKE)
     t_fin_sub = fig.text(0.5, 0.197, "", ha="center", va="center", fontsize=14, fontweight="bold", color=WHITE,
@@ -432,7 +591,8 @@ def render_comeback(data: dict, reel: dict, path: Path) -> Path:
 
     groups = {
         "hook": [ax_3d, ax_shade, t_hook1, t_hook2, t_tag, t_gap, t_gap_sub],
-        "chart": [ax, t_big, t_sub, t_count, t_foot, t_tense],
+        "chart": [ax, t_big, t_sub, t_count, t_foot, t_tense, ax_pm, t_hot, t_break, *pm_legend],
+        "ask": [*t_ask],
         "pass": [ax_3d, ax_shade, t_tag, t_gap, t_gap_sub, t_p1],
         "finish": [ax_3d, ax_shade, t_tag, t_gap, t_gap_sub, t_p1, t_fin_gap, t_fin_sub],
         "result": [ax_3d, ax_shade, t_res1, t_res2, t_fin_gap, t_fin_sub],
@@ -443,6 +603,7 @@ def render_comeback(data: dict, reel: dict, path: Path) -> Path:
         for art in everything:
             art.set_visible(art in groups[phase])
         minimap.set_visible(phase in ("hook", "pass", "finish"))
+        flash.set_alpha(0.0)
 
     def gap_text(g: float) -> None:
         if not np.isfinite(g):
@@ -514,6 +675,37 @@ def render_comeback(data: dict, reel: dict, path: Path) -> Path:
         else:
             tense = p >= chart_end - 3.0 and gap_before is not None and not recent
             t_tense.set_text(f"{rival} {gap_before:.1f} s AHEAD · {last_lap - chart_end} LAPS LEFT" if tense else "")
+        # Karte: Punkte ploppen in der Runde des Manövers auf, Kürzel bleibt kurz stehen
+        for dot, lbl, l in zip(pm_dots, pm_labels, plocs):
+            age = p - l["lap"]
+            dot.set_visible(age >= 0)
+            lbl.set_visible(0 <= age < MAP_LABEL_LAPS)
+            if age >= 0:
+                dot.set_sizes([90 * (1 + 1.5 * max(0.0, 1 - age / 0.8))])
+        pm_lap1.set_visible(p >= 1)
+        done = p >= chart_hi - 0.5
+        pm_ring.set_visible(bool(hot) and done)
+        t_hot.set_visible(bool(hot) and done)
+        t_count.set_text(f"PLACES GAINED ON TRACK   {n_track}")
+        # zwei Akte: roter Bruch beim Platzverlust und beim Stopp, danach „AGAIN: P6 → P1“
+        t_break.set_visible(False)
+        if act:
+            banner = None
+            if act["lost"] <= p < act["lost"] + ACT_BREAK_LAPS:
+                banner, since = (f"P{prep['final']} LOST" + (f" · {act['lost_to']} PASSES" if act["lost_to"] else ""),
+                                 p - act["lost"])
+            elif act["pit"] and act["pit"] <= p < act["pit"] + ACT_BREAK_LAPS:
+                banner, since = f"PIT STOP · DOWN TO P{act['low']}", p - act["pit"]
+            if banner:
+                t_break.set_text(banner)
+                t_break.set_visible(True)
+                t_tense.set_text("")
+                flash.set_alpha(max(0.0, 0.35 * (1 - since / 0.8)))
+            elif p >= act["lost"] + ACT_BREAK_LAPS:
+                t_tense.set_text(arrow(f"AGAIN: P{act['low']} → P{prep['final']}"))
+                t_tense.set_color(ACT2_COLOR)
+            else:
+                t_tense.set_color(WHITE)
         t_foot.set_text("Data: OpenF1 · position at the finish line each lap · "
                         + neutral_legend(k for *_, k in prep["phases"])
                         + "\nplaces gained on track = not from retirements or other cars' pit stops")
@@ -556,22 +748,16 @@ def render_comeback(data: dict, reel: dict, path: Path) -> Path:
         t_p1.set_visible(phase == "finish" and el < 1.6)
         if runner:
             name, gap = runner
-            # Uhr läuft, bis der Zweite die Linie erreicht. Ist der Abstand länger als das
-            # Reel (São Paulo 2024: 19,5 s, Uhr max. ~4 s), stoppt sie 1,2 s vor Schluss und
-            # der offizielle Abstand erscheint – sonst endete das Reel bei „+4,6 s“.
-            el_end = float(prep["result_times"][-1] - t_fin) if len(prep["result_times"]) else gap
-            cut = gap if gap <= el_end else el_end - 1.2
-            if el < cut:
-                t_fin_gap.set_text(f"+{el:.1f} s")
-                t_fin_sub.set_text(f"{name} still to cross the line")
-            else:
-                t_fin_gap.set_text(f"{gap:.3f} s")
-                t_fin_sub.set_text(f"ahead of {name} · official gap")
+            t_fin_gap.set_text(f"{gap:.3f} s")          # sofort der offizielle Abstand, keine hochlaufende Uhr
+            t_fin_sub.set_text(f"ahead of {name} · official gap")
         else:
             t_fin_gap.set_text(f"P{prep['final']}")
             t_fin_sub.set_text("")
 
     def draw(phase: str, v) -> None:
+        if phase == "ask":
+            show("ask")
+            return
         if phase == "chart":
             draw_chart(float(v))
         else:
@@ -582,6 +768,8 @@ def render_comeback(data: dict, reel: dict, path: Path) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     frames = frame_list(prep, order)
+    if question:
+        frames += [("ask", 0.0)] * int(ASK_S * FPS)
     step = max(len(frames) // 10, 1)
     with writer.saving(fig, str(path), dpi=DPI):
         last = None

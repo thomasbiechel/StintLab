@@ -26,6 +26,7 @@ from stintlab.reels.gap_chase import render_gap_chase
 from stintlab.reels.race_story import render_race_story
 from stintlab.reels.comeback import render_comeback
 from stintlab.reels.ghost_lap import render_ghost_lap
+from stintlab.reels.gain_loss import render_gain_loss
 from stintlab.analyses.telemetry import render_telemetry
 from stintlab.analyses.championship import render_championship, render_title_fight
 from stintlab.analyses.teammate_duel import render_teammate_duel
@@ -232,4 +233,5 @@ REELS = {
     "gap_chase": render_gap_chase,
     "race_story": render_race_story,
     "comeback": render_comeback,
+    "gain_loss": render_gain_loss,
 }

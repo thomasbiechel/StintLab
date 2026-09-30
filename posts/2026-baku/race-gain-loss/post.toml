@@ -1,0 +1,24 @@
+# Reel Baku-Rennen: Warum hat Verstappen Russell nie überholt? (Reel-Version des Karussells race-why-no-pass)
+# Aufbau nach der São-Paulo-Auswertung: Antwort im ersten Bild, Animation zeigt, was das TV nicht zeigt,
+# Frage an die Zuschauer am Ende.
+# Rendern: python make_post.py posts/2026-baku/race-gain-loss/post.toml
+[session]
+meeting_key = 1295
+type = "R"
+
+[[reels]]
+analysis   = "gain_loss"
+drivers    = ["RUS", "VER"]          # [vorne, Verfolger]
+laps       = [40, 51]                # Runde 51 weg: Zeitstempel der Zielrunde ungenau
+hook       = "Faster on every straight – and never passed"
+gain_label = "on the straight"       # S3
+loss_label = "in the corners"        # S1 + S2
+answer     = "The tow gave him the speed – the corners took it back"
+question   = "Where should Verstappen have attacked?"
+# open_lap = 46                      # Standard: Runde, in der VER nach der Geraden am nächsten dran war
+open_tag   = "THE LONG STRAIGHT"
+
+[reels.cover]
+title  = "Faster. Never passed."
+kicker = "Baku 2026 · Verstappen vs Russell"
+sub    = "+0.45 s on the straight, −0.44 s in the corners – every lap"

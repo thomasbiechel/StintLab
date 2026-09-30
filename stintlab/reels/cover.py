@@ -185,7 +185,7 @@ class CoverOnly(Exception):
 
 
 ONLY = False
-WITH_COVER = {"comeback", "ghost_lap", "race_story"}     # Reels mit 3D-Szene
+WITH_COVER = {"comeback", "ghost_lap", "race_story", "gain_loss"}     # Reels mit 3D-Szene
 
 
 def make_cover(reel: dict, video: Path, scene, t: float, title: str, kicker: str = "", sub: str = "",

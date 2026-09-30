@@ -43,6 +43,23 @@ Beschriftung mit Jahr („RUS '26“, „VER '25“), damit auch derselbe Fahrer
     Sessions (Wetter aus dem Cache, falls geladen).
   - A ist hier NICHT unbedingt schneller – Texte sagen „faster“/„slower“.
 
+WO GEWONNEN / VERLOREN (paint = true, Standard): Während die Runde auf der Karte
+läuft, färbt sich die Strecke hinter den Autos – in der Farbe dessen, der an dieser
+Stelle Zeit gewinnt (Steigung des geglätteten Abstands, blasser = weniger).
+Nach jedem Sektor erscheint oben dessen Bilanz („S2  VER +0.12“), im Ergebnis
+stehen alle drei. Die Sektorwerte kommen aus demselben Abstand wie die große Zahl
+(an den offiziellen Sektorzeiten ausgerichtet), ergeben also zusammen genau den
+Abstand der Runde. Sind die Teamfarben zu ähnlich (Red Bull / Alpine, gleiches
+Team), nimmt die Karte Lila/Rot statt der Teamfarben – das 3D-Bild bleibt in
+Teamfarben. Vorbild: das Gain/Loss-Reel (Baku 2026).
+
+ERGEBNIS ALS BILANZ: Mit Färbung (paint = true) ist das Ergebnis kein Standbild der
+Karte mehr, sondern drei Balken S1/S2/S3, die nacheinander wachsen – nach oben, wo A
+gewinnt, nach unten, wo B gewinnt –, darunter die Summen je Fahrer.
+FRAGE AM ENDE (question = "…", Standard je nach Reel, question = "" = keine):
+letztes Bild vor der Schleife, bringt Kommentare. Grund: São Paulo Rewind 2026 –
+0 Kommentare bei 2.141 Aufrufen, das Reel stellte den Zuschauern keine Frage.
+
 SICHERE ZONE: Instagram legt unten Caption/Buttons und rechts die Like-Leiste
 über das Video – unten ~20 % bleiben frei, Wichtiges steht in der Mitte.
 """
@@ -69,13 +86,18 @@ from stintlab.trackpos import retime
 from stintlab.style import COLORS, resolve_font, team_color
 
 WIDTH_PX, HEIGHT_PX, DPI, FPS = 1080, 1920, 150, 60
-OPEN_S, LAP_S, REPLAY_S, RESULT_S = 3.5, 7.0, 5.0, 1.5
+OPEN_S, LAP_S, REPLAY_S, RESULT_S = 3.5, 7.0, 5.0, 3.5   # Ergebnis länger: Sektor-Balken wachsen nacheinander
+ASK_S = 2.5            # Frage an die Zuschauer am Ende
 REPLAY_WINDOW_S = 4.0  # so viele echte Sekunden zeigt die Zeitlupe (5 s Video → 0,8-fach)
 TRAIL_S = 2.0          # Schweif hinter den Punkten, in echten Sekunden
 ZOOM_M = 160.0         # Breite des Zoom-Ausschnitts in Metern
 MAP_BOX = [0.06, 0.36, 0.88, 0.44]
 ALIGN_WARN_M = 4.0     # mittlere Restabweichung der Strecken nach dem Übereinanderlegen
 LENGTH_WARN = 0.01     # 1 % Unterschied der Rundenlänge → vermutlich Umbau
+PAINT_SMOOTH = 0.015   # Glättung des Abstands für die Färbung (Anteil der Runde, ~80 m)
+PAINT_GRID = 1000      # Stützstellen der Runde für die Färbung
+COLOR_MIN_DIST = 0.35  # Teamfarben näher als das (RGB-Abstand) → Lila/Rot auf der Karte
+LOSS_COLOR = "#ff5a5f"
 
 
 # ── Daten ────────────────────────────────────────────────────────────────────
@@ -418,6 +440,44 @@ def check_messages(checks: dict, years: tuple[str, str]) -> list[str]:
     return msgs
 
 
+def _filled_delta(res: dict) -> tuple[np.ndarray, np.ndarray]:
+    """Abstand auf gleichmäßigem Raster über die Runde, Lücken (NaN) linear gefüllt."""
+    grid = np.linspace(0.0, 1.0, PAINT_GRID)
+    frac, delta = np.asarray(res["frac"], float), np.asarray(res["delta"], float)
+    ok = ~np.isnan(delta)
+    if ok.sum() < 2:
+        raise ValueError("zu wenige Abstandswerte für die Färbung")
+    return grid, np.interp(grid, frac[ok], delta[ok])
+
+
+def gain_profile(frac: np.ndarray, res: dict, width: float = PAINT_SMOOTH) -> tuple[np.ndarray, np.ndarray]:
+    """Für jede Stelle `frac`: wer gewinnt dort Zeit (+1 = A, −1 = B) und wie stark (0,2–1)."""
+    grid, d = _filled_delta(res)
+    n = max(int(round(width * PAINT_GRID)) | 1, 1)
+    padded = np.concatenate([np.full(n // 2, d[0]), d, np.full(n // 2, d[-1])])
+    sm = np.convolve(padded, np.ones(n) / n, mode="valid")
+    slope = np.gradient(sm)
+    ref = np.percentile(np.abs(slope), 85) or 1.0
+    at = np.interp(np.asarray(frac, float), grid, slope)
+    return np.where(at >= 0, 1.0, -1.0), np.clip(np.abs(at) / ref, 0.2, 1.0)
+
+
+def sector_gains(res: dict) -> list[float]:
+    """Zeit, die A in jedem Sektor gewinnt (> 0) oder verliert (< 0). Summe = Abstand der Runde.
+    Leer, wenn die Sektorgrenzen fehlen."""
+    marks = [0.0] + list(res.get("sector_marks") or []) + [1.0]
+    if len(marks) != 4:
+        return []
+    grid, d = _filled_delta(res)
+    v = np.interp(marks, grid, d)
+    return [float(v[i + 1] - v[i]) for i in range(3)]
+
+
+def colors_too_close(c1: str, c2: str) -> bool:
+    from matplotlib.colors import to_rgb
+    return float(np.linalg.norm(np.subtract(to_rgb(c1), to_rgb(c2)))) < COLOR_MIN_DIST
+
+
 def gap_at(prep: dict, t: float) -> float:
     """Laufender Abstand (> 0 = A vorne) zur Rundenzeit t von A."""
     at, afrac = prep["a_frac"]
@@ -616,6 +676,12 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
         c_scene, c_t = min(shots, key=spread)
         make_cover(reel, path, c_scene, c_t, c_title, kicker="Ghost lap", sub=c_sub, meta=session_meta(data))
 
+    paint = reel.get("paint", True)
+    if not isinstance(paint, bool):
+        raise ValueError("paint muss true oder false sein (klein geschrieben, ohne Anführungszeichen)")
+    if paint and colors_too_close(ca, cb):      # 3D behält die Teamfarben (Scene hat eigene)
+        ca, cb = COLORS["accent"], LOSS_COLOR
+
     plt.rcParams["font.family"] = "sans-serif"
     plt.rcParams["font.sans-serif"] = [resolve_font(), "DejaVu Sans"]   # Ersatz für →, ▲▼ (fehlen in Barlow)
     fig = plt.figure(figsize=(WIDTH_PX / DPI, HEIGHT_PX / DPI), dpi=DPI, facecolor=COLORS["bg"])
@@ -672,6 +738,112 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
     replay_span = ax_gap.axvspan(frac_of(rep_from or 0.0) * km[-1], frac_of(rep_to or 0.0) * km[-1],
                                  color=COLORS["accent"], alpha=0.0, zorder=0)
     gap_line, = ax_gap.plot([], [], color=COLORS["text"], linewidth=1.6)
+
+    # ── Wo gewonnen / verloren: Strecke färbt sich, Sektor-Bilanz ──────────
+    pts = np.column_stack([xa[inside], ya[inside]])
+    seg_frac = np.interp(ta[inside][:-1], at, afrac)
+    painted = LineCollection(np.stack([pts[:-1], pts[1:]], axis=1), linewidths=6, capstyle="round",
+                             zorder=2.5)
+    ax_map.add_collection(painted)
+    if paint:
+        who, strength = gain_profile(seg_frac, res)
+        seg_rgba = np.array([to_rgba(ca if w > 0 else cb, 0.3 + 0.7 * k) for w, k in zip(who, strength)])
+    else:
+        seg_rgba = np.zeros((len(seg_frac), 4))
+    # Vorjahresvergleich mit rekonstruierter Runde (OpenF1 ohne Rundendaten, z. B. Baku 2025): B hat keine
+    # Sektorzeiten → compare() setzt keine sector_marks → vorher keine Chips/Balken. Dann gelten die
+    # Sektorgrenzen von A (offizielle Zeiten dieser Session); B's Sektorwerte kommen dort nur aus dem
+    # Abstandsverlauf, nicht aus offiziellen Zeiten.
+    if paint and not res.get("sector_marks"):
+        tr_a = prep["traces"][0]
+        if tr_a.get("sectors") and all(tr_a["sectors"]) and "frac" in tr_a:
+            res["sector_marks"] = [float(np.interp(x, tr_a["t"], tr_a["frac"])) for x in np.cumsum(tr_a["sectors"][:2])]
+            print(f"  ℹ Sektorgrenzen aus {drv_a} ({drv_b} ohne offizielle Sektorzeiten) – Sektorwerte aus dem Abstandsverlauf")
+    gains = sector_gains(res) if paint else []
+    sector_end = list(res.get("sector_marks") or []) + [1.0]
+    chips = []
+    for i, g in enumerate(gains):
+        winner = drv_a if g >= 0 else drv_b
+        chips.append(fig.text(0.2 + 0.3 * i, 0.80, f"S{i + 1}  {winner} +{abs(g):.2f}", ha="center",
+                              va="center", fontsize=14, fontweight="bold", color=ca if g >= 0 else cb,
+                              path_effects=[patheffects.withStroke(linewidth=3, foreground="black", alpha=0.7)]))
+    paint_hint = fig.text(0.5, 0.772, "track colour = who was faster there" if paint else "", ha="center",
+                          va="center", fontsize=10, color=COLORS["muted"])
+
+    # ── Ergebnis als Sektor-Balken ──────────────────────────────────────────
+    sector_view = len(gains) == 3
+    ax_sec = fig.add_axes([0.14, 0.43, 0.72, 0.30])
+    ax_sec.set_facecolor(COLORS["bg"])
+    for side in ax_sec.spines.values():
+        side.set_visible(False)
+    ax_sec.tick_params(colors=COLORS["text"], labelsize=14, left=False, labelleft=False, length=0)
+    ax_sec.axhline(0, color=COLORS["muted"], linewidth=1.2)
+    sec_top = max([abs(g) for g in gains] + [0.05]) * 1.45
+    ax_sec.set_ylim(-sec_top, sec_top)
+    ax_sec.set_xlim(-0.6, 2.6)
+    ax_sec.set_xticks([0, 1, 2], ["S1", "S2", "S3"])
+    for lbl in ax_sec.get_xticklabels():
+        lbl.set_fontweight("bold")
+    sec_bars = ax_sec.bar([0, 1, 2], [0.0, 0.0, 0.0], width=0.55,
+                          color=[ca if g >= 0 else cb for g in gains] or None)
+    sec_vals = [ax_sec.text(i, 0, "", ha="center", fontsize=15, fontweight="bold",
+                            color=ca if g >= 0 else cb) for i, g in enumerate(gains)]
+    ax_sec.text(-0.55, sec_top * 0.95, f"{drv_a} faster", color=ca, fontsize=12, fontweight="bold", va="top")
+    ax_sec.text(-0.55, -sec_top * 0.95, f"{drv_b} faster", color=cb, fontsize=12, fontweight="bold",
+                va="bottom")
+    sec_kicker = fig.text(0.5, 0.775, "WHERE IT WAS DECIDED", ha="center", va="center", fontsize=13,
+                          fontweight="bold", color=COLORS["muted"])
+    sum_txt = [fig.text(0.5, 0.36, "", ha="center", va="center", fontsize=22, fontweight="bold", color=ca),
+               fig.text(0.5, 0.315, "", ha="center", va="center", fontsize=22, fontweight="bold", color=cb)]
+    won_a = [f"S{i + 1}" for i, g in enumerate(gains) if g >= 0]
+    won_b = [f"S{i + 1}" for i, g in enumerate(gains) if g < 0]
+    sum_a = sum(g for g in gains if g >= 0)
+    sum_b = -sum(g for g in gains if g < 0)
+
+    # ── Frage an die Zuschauer ──────────────────────────────────────────────
+    if prep.get("compare"):
+        default_q = f"Which lap was better – '{str(prep['years'][0])[2:]} or '{str(prep['years'][1])[2:]}?"
+    else:
+        default_q = f"Where could {drv_b} have found {abs(prep['gap']):.2f} s?"
+    question = reel.get("question", default_q)
+    if not isinstance(question, str):
+        raise ValueError('question muss ein Text sein, z. B. question = "Who had the better lap?" (oder "" = keine Frage)')
+    ask_txt = [fig.text(0.5, 0.65, "YOUR TURN", ha="center", va="center", fontsize=13, fontweight="bold",
+                        color=COLORS["muted"]),
+               fig.text(0.5, 0.58, question, ha="center", va="center", fontsize=28 if len(question) < 32 else 22,
+                        fontweight="bold", color=COLORS["text"]),
+               fig.text(0.5, 0.52, "Tell us in the comments", ha="center", va="center", fontsize=20,
+                        fontweight="bold", color=COLORS["accent"])]
+
+    def draw_sectors(u: float) -> None:
+        """Ergebnis: Balken wachsen nacheinander (erste 60 %), dann Summen."""
+        grow = min(u / 0.6, 1.0)
+        for i, (bar, g) in enumerate(zip(sec_bars, gains)):
+            h = min(max(grow * 3 - i, 0.0), 1.0)
+            h = h * h * (3 - 2 * h)
+            bar.set_height(g * h)
+            sec_vals[i].set_text(f"+{abs(g):.2f}" if h > 0.95 else "")
+            off = sec_top * 0.06
+            sec_vals[i].set_position((i, g + off if g >= 0 else g - off))
+            sec_vals[i].set_va("bottom" if g >= 0 else "top")
+        done = grow >= 1.0
+        sum_txt[0].set_text(f"{drv_a} +{sum_a:.2f} s in {' + '.join(won_a)}" if done and won_a else "")
+        sum_txt[1].set_text(f"{drv_b} +{sum_b:.2f} s in {' + '.join(won_b)}" if done and won_b else "")
+
+    def show_paint(frac_now: float | None) -> None:
+        """Färbung bis frac_now (None = ganze Runde), Chips der fertigen Sektoren mit kurzem „Pop“."""
+        f = 1.0 if frac_now is None else frac_now
+        cols = seg_rgba.copy()
+        cols[seg_frac > f, 3] = 0.0
+        painted.set_color(cols)
+        painted.set_visible(paint)
+        paint_hint.set_visible(paint)
+        for i, chip in enumerate(chips):
+            done = f >= sector_end[i] - 1e-6
+            chip.set_visible(done)
+            if done:
+                pop = 0.0 if frac_now is None else max(0.0, 1.0 - (f - sector_end[i]) / 0.04)
+                chip.set_fontsize(14 * (1.0 + 0.4 * pop))
     cursor = ax_gap.axvline(0, color=COLORS["accent"], linewidth=1.2, visible=False)
     gap_fills = []
 
@@ -731,6 +903,11 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
         minimap.set_visible(ax_3d in shown and not in_replay[0])
         minimap_r.set_visible(ax_3d in shown and in_replay[0])
         txt_data.set_visible(ax_3d not in shown)   # über der 3D-Strecke würde die Zeile stören
+        for chip in chips:
+            chip.set_visible(False)
+        paint_hint.set_visible(False)
+        for art in (ax_sec, sec_kicker, *sum_txt, *ask_txt):
+            art.set_visible(False)
 
     def place(key: str, t: float) -> list:
         ax, trails, dots = layers[key]
@@ -787,6 +964,7 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
             place("map", t)
             running_gap(t)
             draw_gap(t, full=False)
+            show_paint(frac_of(t))
             cursor.set_visible(False)
             replay_span.set_alpha(0.0)
             return
@@ -824,10 +1002,28 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
             cursor.set_visible(True)
             replay_span.set_alpha(0.18)
             return
-        # result
+        if phase == "ask":
+            visible()
+            txt_big.set_text("")
+            txt_sub.set_text("")
+            for art in ask_txt:
+                art.set_visible(True)
+            return
+        if phase == "result" and sector_view:
+            visible()
+            for art in (ax_sec, sec_kicker, *sum_txt):
+                art.set_visible(True)
+            draw_sectors(t)            # hier ist t der Fortschritt 0–1 (siehe unten)
+            txt_big.set_text(result.upper())
+            txt_big.set_fontsize(30)
+            txt_big.set_color(ca)
+            txt_sub.set_text(f"{drv_a} {t_a}  ·  {drv_b} {t_b}")
+            return
+        # result (ohne Sektoren: Karte wie früher)
         visible(ax_map, ax_gap, txt_leg_a, txt_leg_b)
         place("map", t)
         draw_gap(t, full=True)
+        show_paint(None)
         cursor.set_visible(False)
         replay_span.set_alpha(0.0)
         txt_big.set_text(result.upper())
@@ -841,6 +1037,12 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     frames = frame_times(lap_a, rep_from, open_from, reel.get("order", "classic"))
+    if sector_view:                    # Ergebnis-Bilder bekommen ihren Fortschritt 0–1 statt der Rundenzeit
+        n_res = sum(1 for ph, _ in frames if ph == "result")
+        k = iter(range(n_res))
+        frames = [(ph, next(k) / max(n_res - 1, 1)) if ph == "result" else (ph, t) for ph, t in frames]
+    if question:
+        frames += [("ask", 0.0)] * int(ASK_S * FPS)
     step = max(len(frames) // 10, 1)
     with writer.saving(fig, str(path), dpi=DPI):
         last = None
