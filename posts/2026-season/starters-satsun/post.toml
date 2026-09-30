@@ -8,8 +8,11 @@ type = "R"
 [[slides]]
 analysis = "best_starters"
 reel     = true          # zusätzlich als Reel: Balken bauen sich auf
-title    = "WHO ARE THE BEST STARTERS?"
-subtitle = "Lap-1 places gained, compared with what each grid slot usually gains"
+title    = "WHO ARE THE BEST STARTERS SO FAR THIS SEASON ?"
+subtitle = "Places gained by the exit of turn 1, compared with what each grid slot usually gains"
+measure  = "turn1"       # Reihenfolge nach der ersten Kurve (Positionsdaten, ~1 MB pro Rennen); "lap1" = Linie nach Runde 1
+# Messpunkt je Rennen überschreiben (Anteil der Runde), wenn die Autos dort noch nebeneinander sind:
+at_frac  = { Spielberg = 0.09 }   # automatisch 7,0 % – ANT/HAM nebeneinander, bei 9 % HAM vorne (TV bestätigt)
 
 [[slides]]
 analysis = "saturday_sunday"

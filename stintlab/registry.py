@@ -178,7 +178,8 @@ def _top(slide):
 def _best_starters(ax, data, slide):
     # alle Rennen des Jahres bis einschließlich dieses Wochenendes (season.py)
     from stintlab.season import race_session, season_sessions
-    render_best_starters(ax, season_sessions(data["meeting_key"], "R", load=race_session), _top(slide))
+    render_best_starters(ax, season_sessions(data["meeting_key"], "R", load=race_session), _top(slide),
+                         slide.get("measure", "turn1"), slide.get("at_frac"))
 
 
 def _saturday_sunday(ax, data, slide):
