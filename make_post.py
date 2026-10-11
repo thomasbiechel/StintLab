@@ -11,6 +11,7 @@ ideale Runde aus FP3 in ein Karussell.
 
 import argparse
 import sys
+import time
 import tomllib
 from pathlib import Path
 
@@ -22,6 +23,16 @@ from stintlab.quali import quali_mismatches
 from stintlab.registry import ANALYSES, REELS
 from stintlab.session import load_session, sign_mismatches
 from stintlab.style import new_slide, save_slide
+
+
+def format_duration(seconds: float) -> str:
+    """123.4 → „2 min 3 s“, 3725 → „1 h 2 min 5 s“."""
+    s = int(round(seconds))
+    h, rest = divmod(s, 3600)
+    m, sec = divmod(rest, 60)
+    if h:
+        return f"{h} h {m} min {sec} s"
+    return f"{m} min {sec} s" if m else f"{sec} s"
 
 
 def main() -> None:
@@ -37,6 +48,7 @@ def main() -> None:
 def build(config_file: Path, refresh: bool = False, keep_going: bool = False) -> list[str]:
     """Alle Slides und Reels einer post.toml erzeugen. Gibt die Fehler zurück
     (nur mit keep_going – sonst bricht der erste Fehler ab)."""
+    t_total = time.perf_counter()
     config_file = Path(config_file)
     config = tomllib.loads(config_file.read_text(encoding="utf-8"))
     failed: list[str] = []
@@ -133,16 +145,18 @@ def build(config_file: Path, refresh: bool = False, keep_going: bool = False) ->
     for i, reel in enumerate(reels, start=1):
         filename = f"reel_{i:02d}_{reel['analysis']}.mp4"
         print(f"… rendere {filename} (dauert etwa eine Minute)")
+        t_reel = time.perf_counter()
         try:
             path = REELS[reel["analysis"]](sessions[reel.get("session", session["type"])], reel,
                                            out_dir / filename)
-            print(f"✓ {path}")
+            print(f"✓ {path}  (Dauer: {format_duration(time.perf_counter() - t_reel)})")
         except Exception as exc:
             if not keep_going:
                 raise
             plt.close("all")
             failed.append(f"{filename}: {exc}")
             print(f"✗ {filename} übersprungen: {exc}")
+    print(f"Gesamtdauer: {format_duration(time.perf_counter() - t_total)}")
     return failed
 
 

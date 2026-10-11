@@ -6,7 +6,7 @@ import math
 import numpy as np
 import pytest
 
-from stintlab.reels.blender_export import (FOC, HALF_W, export_scene, fov_degrees, gauss_smooth,
+from stintlab.reels.blender_export import (FOC, HALF_W, export_scene, fov_degrees, gauss_smooth, retime_xy,
                                            scene_to_dict)
 from stintlab.reels.chase3d import Z_EXAG, Scene
 from tests.fake_race import make_race
@@ -114,6 +114,39 @@ def test_camera_rig_is_applied_and_restored(scene):
         return float(np.median(np.linalg.norm(cam - b, axis=1)))
 
     assert dist(near) < 0.5 * dist(far)
+
+
+def test_path_camera_keeps_the_chaser_in_the_view_axis(scene):
+    t0, t1 = _window(scene, 3.0)
+    d = scene_to_dict(scene, t0, t1, fps=20)
+    assert d["meta"]["camera_mode"] == "path"
+    cam = np.array(d["frames"]["camera"]["pos"])
+    fwd = np.array(d["frames"]["camera"]["forward"])
+    b = np.array(d["frames"]["cars"]["VER"]["pos"])
+    v = b - cam
+    yaw = np.degrees(np.arctan2(v[:, 1], v[:, 0]) - np.arctan2(fwd[:, 1], fwd[:, 0]))
+    yaw = (yaw + 180) % 360 - 180
+    assert np.abs(yaw).max() < 3.0                            # seitlich bleibt das Auto in der Bildmitte
+    assert np.allclose(np.linalg.norm(fwd, axis=1), 1.0, atol=1e-3)
+
+
+def test_retime_smooths_the_speed_but_keeps_the_path():
+    rng = np.random.default_rng(1)
+    t = np.arange(0, 20, 1 / 20)
+    s = np.maximum.accumulate(60 * t + rng.normal(0, 3, len(t)))        # Tempo-Rauschen wie bei linear aufgefüllten GPS-Daten
+    xy = np.column_stack([100 * np.cos(s / 100), 100 * np.sin(s / 100)])
+    out = retime_xy(xy, 20)
+    speed = lambda a: np.hypot(*(np.diff(a, axis=0) * 20).T)
+    assert speed(out).std() < 0.3 * speed(xy).std()
+    assert np.abs(np.hypot(*out.T) - 100).max() < 0.5                    # bleibt auf dem Kreis (Weg unverändert)
+    assert retime_xy(xy[:3], 20).shape == (3, 2)                         # zu kurz: unverändert
+
+
+def test_classic_camera_is_still_available(scene):
+    t0, t1 = _window(scene, 1.0)
+    d = scene_to_dict(scene, t0, t1, fps=10, cam_mode="classic")
+    assert d["meta"]["camera_mode"] == "classic"
+    assert len(d["frames"]["camera"]["pos"]) == len(d["frames"]["t"])
 
 
 def test_camera_rig_is_restored_after_an_error(scene):

@@ -162,6 +162,12 @@ def test_terrain_slopes_with_hilly_track(data):
     assert np.ptp(T.height(c[::20, :2], hills=False)) > 25.0
 
 
+def test_format_duration():
+    assert br.format_duration(5.4) == "5 s"
+    assert br.format_duration(123.4) == "2 min 3 s"
+    assert br.format_duration(3725) == "1 h 2 min 5 s"
+
+
 def test_lamps_only_at_night(data):
     night = dict(data, meta=dict(data["meta"], light="night"))
     br.build_scene(night, br.parse_args(["x.json", "out"]))

@@ -31,7 +31,8 @@ def times_of(prep: dict):
     raise ValueError("Dieses Reel hat keinen 3D-Anfang (weder open_times noch hook_times)")
 
 
-def export_reel(data: dict, reel: dict, out: Path, fps: int = 60, z_exag: float = 1.0, **cam) -> Path:
+def export_reel(data: dict, reel: dict, out: Path, fps: int = 60, z_exag: float = 1.0,
+                full_lap: bool = False, **cam) -> Path:
     """Reel vorbereiten und den 3D-Anfang exportieren. data wie von load_session."""
     module = importlib.import_module(f"stintlab.reels.{reel['analysis']}")
     if not hasattr(module, "prepare"):
@@ -40,6 +41,11 @@ def export_reel(data: dict, reel: dict, out: Path, fps: int = 60, z_exag: float 
     scene = prep.get("scene")
     if scene is None:
         raise ValueError("Dieses Reel hat keine 3D-Szene")
+    if full_lap:     # ganze schnellste Runde des ersten Fahrers statt nur des 3D-Anfangs
+        from stintlab.reels.race_story import reference_lap
+        lap = reference_lap(data, scene.a)
+        t0 = (lap["LapStart"] - scene.t0s[scene.a]).total_seconds()
+        return export_scene(scene, t0, t0 + float(lap["LapTime"]), out, fps=fps, z_exag=z_exag, **cam)
     t = times_of(prep)
     return export_scene(scene, float(t[0]), float(t[-1]) + 1.0 / fps, out, fps=fps, z_exag=z_exag, **cam)
 
@@ -51,6 +57,9 @@ def main() -> None:
     ap.add_argument("--out", default="scene.json")
     ap.add_argument("--fps", type=int, default=60)
     ap.add_argument("--z-exag", type=float, default=1.0, help="Höhen-Überhöhung (1.0 = echt, 1.5 = altes Bild)")
+    ap.add_argument("--full-lap", action="store_true", help="ganze schnellste Runde statt nur des 3D-Anfangs")
+    ap.add_argument("--cam-mode", choices=("path", "classic"), default="path",
+                    help="path = Kamera folgt dem Weg des Verfolgers (Standard), classic = wie im 2D-Bild (blickt geradeaus)")
     ap.add_argument("--cam-back", type=float, default=CAM_BACK, help=f"Meter hinter dem Verfolger (Standard {CAM_BACK})")
     ap.add_argument("--cam-height", type=float, default=CAM_HEIGHT, help=f"Kamerahöhe in m (Standard {CAM_HEIGHT})")
     ap.add_argument("--cam-ahead", type=float, default=CAM_AHEAD, help=f"Blickziel vor den Autos in m (Standard {CAM_AHEAD})")
@@ -63,7 +72,7 @@ def main() -> None:
     reel = reels[args.reel - 1]
     session = config["session"]
     data = load_session(session["meeting_key"], reel.get("session", session["type"]))
-    path = export_reel(data, reel, Path(args.out), fps=args.fps, z_exag=args.z_exag, cam_back=args.cam_back,
+    path = export_reel(data, reel, Path(args.out), fps=args.fps, z_exag=args.z_exag, full_lap=args.full_lap, cam_mode=args.cam_mode, cam_back=args.cam_back,
                        cam_height=args.cam_height, cam_ahead=args.cam_ahead)
     print(f"✓ {path}")
 

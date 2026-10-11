@@ -45,6 +45,7 @@ import argparse
 import json
 import math
 import sys
+import time
 import warnings
 from pathlib import Path
 
@@ -904,7 +905,7 @@ def build_placeholder_car(name: str, color, ghost: bool, parent):
     al = 0.45 if ghost else 1.0
     body = solid_material(f"{name} Lack", color, 0.25, 0.25, alpha=al, specular=0.5)
     carbon = solid_material(f"{name} Carbon", (0.045, 0.045, 0.05), 0.35, 0.15, alpha=al, specular=0.4)
-    rubber = solid_material(f"{name} Reifen", (0.02, 0.02, 0.022), 0.85, alpha=al, specular=0.2)
+    rubber = solid_material(f"{name} Reifen", (0.05, 0.05, 0.056), 0.7, alpha=al, specular=0.4)
     rim = solid_material(f"{name} Felge", (0.55, 0.55, 0.58), 0.3, 1.0, alpha=al)
     helmet = solid_material(f"{name} Helm", (0.9, 0.9, 0.92), 0.25, alpha=al, specular=0.5)
     taillight = solid_material(f"{name} Rücklicht", (1.0, 0.04, 0.02), 0.4, emission=14.0)
@@ -1156,7 +1157,7 @@ def build_model_cars(d: dict, path: Path, decimate: float, rebuild: bool, yaw: f
         mats = {
             "paint": solid_material(f"{drv} Lack", meta["colors"][drv], 0.25, 0.25, alpha=al, specular=0.5),
             "carbon": solid_material(f"{drv} Carbon", (0.045, 0.045, 0.05), 0.35, 0.15, alpha=al, specular=0.4),
-            "rubber": solid_material(f"{drv} Reifen", (0.02, 0.02, 0.022), 0.85, alpha=al, specular=0.2),
+            "rubber": solid_material(f"{drv} Reifen", (0.05, 0.05, 0.056), 0.7, alpha=al, specular=0.4),
             "rim": solid_material(f"{drv} Felge", (0.55, 0.55, 0.58), 0.3, 1.0, alpha=al),
         }
         order = {"body": ("paint", "carbon"), "wheel": ("rubber", "rim")}
@@ -1413,7 +1414,7 @@ def configure_render(engine: str, samples: int | None, motion_blur: bool):
     set_safe(sc.view_settings, "view_transform", "Standard")
     set_safe(sc.view_settings, "look", "None")
     set_safe(sc.render, "use_motion_blur", motion_blur)
-    set_safe(sc.render, "motion_blur_shutter", 0.35)
+    set_safe(sc.render, "motion_blur_shutter", 0.25)
     sc.render.film_transparent = False
 
 
@@ -1487,7 +1488,18 @@ def build_scene(d: dict, args: argparse.Namespace):
     return cars, cam
 
 
+def format_duration(seconds: float) -> str:
+    """123.4 → „2 min 3 s“, 3725 → „1 h 2 min 5 s“."""
+    s = int(round(seconds))
+    h, rest = divmod(s, 3600)
+    m, sec = divmod(rest, 60)
+    if h:
+        return f"{h} h {m} min {sec} s"
+    return f"{m} min {sec} s" if m else f"{sec} s"
+
+
 def main(argv: list[str]) -> str:
+    t_start = time.perf_counter()
     args = parse_args(argv)
     d = json.loads(Path(args.scene_json).read_text(encoding="utf-8"))
     build_scene(d, args)
@@ -1497,7 +1509,11 @@ def main(argv: list[str]) -> str:
         sc.frame_start, sc.frame_end = a + 1, b
     # absolut machen: Blender deutet relative Pfade selbst (bei dir landete das Bild in C:\output)
     result = render_output(Path(args.out).resolve(), args.video, args.still)
+    dauer = time.perf_counter() - t_start
+    n = 1 if args.still is not None else sc.frame_end - sc.frame_start + 1
     print(f"[blender_render] fertig: {result}")
+    print(f"[blender_render] Dauer: {format_duration(dauer)} für {n} Bild{'er' if n != 1 else ''} "
+          f"({dauer / n:.1f} s pro Bild)")
     return result
 
 

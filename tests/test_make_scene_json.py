@@ -19,6 +19,14 @@ def test_race_story_open_is_exported(tmp_path):
     assert d["frames"]["t"][-1] > d["frames"]["t"][0]
 
 
+def test_full_lap_is_exported(tmp_path):
+    data = make_race(GAPS, sc_laps=(6, 7), official=0.45)
+    p = export_reel(data, {"analysis": "race_story"}, tmp_path / "lap.json", fps=10, full_lap=True)
+    d = json.loads(p.read_text(encoding="utf-8"))
+    t = d["frames"]["t"]
+    assert (t[-1] - t[0]) == pytest.approx(100.0, abs=1.0)                  # ganze Runde (fake_race: 100 s)
+
+
 def test_reel_without_3d_part_is_rejected():
     with pytest.raises(ValueError):
         times_of({"hook_times": []})

@@ -35,7 +35,17 @@ from stintlab.reels.chase3d import FOC, GRASS_W, TRACK_W, Z_EXAG, Camera, Scene
 SCHEMA = 1
 ASPECT = (1080, 1920)            # 9:16 wie die Reels
 HALF_W = 0.5625                  # halbe Bildbreite in chase3d-Bildkoordinaten (Höhe: ±1)
-Z_SMOOTH_S, YAW_SMOOTH_S, CAM_SMOOTH_S, PITCH_SMOOTH_S = 0.30, 0.10, 0.15, 0.40
+# Z nur leicht glätten: die Strecke selbst ist schon geglättet, und bei 80 m/s wären 0,3 s ein Versatz von 25 m
+# entlang der Strecke – an Kuppen (Raidillon) schwebte das Auto bis zu 0,5 m über dem Asphalt.
+Z_SMOOTH_S, YAW_SMOOTH_S, CAM_SMOOTH_S, PITCH_SMOOTH_S = 0.08, 0.10, 0.15, 0.15
+
+# Wegkamera (cam_mode="path"): hängt auf dem Weg des Verfolgers, back Meter dahinter, und schaut ahead Meter
+# auf dem Weg voraus – so bleibt das Auto in Kurven in der Bildmitte (die klassische Kamera blickt geradeaus).
+RETIME_SIGMA_S = 0.30                     # Tempo-Glättung der Autos (siehe retime_xy)
+PATH_PRE_S, PATH_POST_S = 2.5, 1.5        # Weg vor/nach dem Zeitraum, damit Anfang und Ende Kameraziele haben
+PATH_SMOOTH_S, PATH_CAM_SMOOTH_S, PATH_AIM_SMOOTH_S = 0.12, 0.20, 0.25
+AIM_SHARE = 0.0                           # Blickziel = das Auto selbst (Kurve: ein Blick weiter voraus schiebt es zum Bildrand)
+LEADER_PULL, LEADER_RANGE_M = 0.30, 80.0  # Blick wandert bis zu 30 % zum Führenden, wenn er näher als 80 m vor uns ist
 
 # Kamera für Blender: viel näher und tiefer als im matplotlib-Bild (dort 40 m / 22 m / 25 m) – im Hochformat
 # sollen die Autos das Bild füllen. back = Meter hinter dem Verfolger, height = Höhe über der Strecke,
@@ -160,18 +170,90 @@ def surface_z(centre: np.ndarray, xy: np.ndarray) -> np.ndarray:
     return out
 
 
-def _frames(scene: Scene, t_start: float, t_end: float, fps: int, z_exag: float) -> dict:
+def retime_xy(xy: np.ndarray, fps: int, sigma_s: float = RETIME_SIGMA_S) -> np.ndarray:
+    """Fahrweg unverändert lassen, nur das Tempo glätten. OpenF1 liefert Positionen nur ein paar Mal pro Sekunde;
+    dazwischen wird linear aufgefüllt, daher springt die Geschwindigkeit von Bild zu Bild (bei 20 fps sah man
+    Spitzen bis 400 km/h und Beschleunigungen von über 400 m/s²). Hier: zurückgelegte Strecke s(t) mit
+    Medianfilter von Ausreißern befreien, glätten und die Position wieder auf dem ursprünglichen Weg ablesen."""
+    xy = np.asarray(xy, dtype=float)
+    if len(xy) < 7:
+        return xy.copy()
+    inc = np.hypot(*np.diff(xy, axis=0).T)
+    s = np.concatenate([[0.0], np.cumsum(inc)])
+    if s[-1] < 1e-6:
+        return xy.copy()
+    pad = np.pad(inc, 2, mode="edge")
+    med = np.median(np.lib.stride_tricks.sliding_window_view(pad, 5), axis=1)
+    s2 = np.concatenate([[0.0], np.cumsum(med)])
+    s2 *= s[-1] / max(s2[-1], 1e-9)
+    g = np.maximum.accumulate(gauss_smooth(s2, sigma_s * fps))
+    return np.column_stack([np.interp(g, s, xy[:, 0]), np.interp(g, s, xy[:, 1])])
+
+
+def _along(s_path: np.ndarray, vals: np.ndarray, s_q: np.ndarray) -> np.ndarray:
+    """Werte entlang des Weges bei Weglängen s_q; außerhalb wird entlang der Randrichtung fortgesetzt."""
+    out = np.column_stack([np.interp(s_q, s_path, vals[:, k]) for k in range(vals.shape[1])])
+
+    def slope(i: int, j: int) -> np.ndarray:                 # Änderung je Meter Weg zwischen Index i und j
+        ds = s_path[j] - s_path[i]
+        return (vals[j] - vals[i]) / ds if ds > 1e-9 else np.zeros(vals.shape[1])
+
+    lo, hi = s_q < s_path[0], s_q > s_path[-1]
+    if lo.any():
+        out[lo] = vals[0] + np.outer(s_q[lo] - s_path[0], slope(0, min(5, len(vals) - 1)))
+    if hi.any():
+        out[hi] = vals[-1] + np.outer(s_q[hi] - s_path[-1], slope(max(len(vals) - 6, 0), len(vals) - 1))
+    return out
+
+
+def _path_camera(scene: Scene, n: int, pre: int, xy_ext: np.ndarray, fps: int, z_exag: float, back: float,
+                 height: float, ahead: float, car_a: np.ndarray, car_b: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Kamera auf dem Weg des Verfolgers B (xy_ext: sein Weg mit pre Bildern davor und danach Auslauf).
+    Gibt Position (n,3) und Blickrichtung (n,3) zurück."""
+    xy = gauss_smooth(xy_ext, PATH_SMOOTH_S * fps)
+    z = surface_z(_zfix(scene.P, z_exag), xy)
+    path = np.column_stack([xy, z])
+    s_path = np.concatenate([[0.0], np.cumsum(np.hypot(*np.diff(xy, axis=0).T))])
+    s_now = s_path[pre:pre + n]
+    cam_pt = _along(s_path, path, s_now - back)
+    aim_pt = _along(s_path, path, s_now + AIM_SHARE * ahead)
+    # Führenden leicht mit ins Bild nehmen, solange er nahe VOR dem Verfolger fährt
+    to_a = car_a[:, :2] - car_b[:, :2]
+    dist = np.hypot(*to_a.T)
+    tan = _along(s_path, path, s_now + 1.0)[:, :2] - path[pre:pre + n, :2]
+    in_front = np.einsum("ij,ij->i", to_a, tan) > 0
+    w = LEADER_PULL * np.clip(1.0 - dist / LEADER_RANGE_M, 0.0, 1.0) * in_front
+    aim_xy = (1 - w)[:, None] * aim_pt[:, :2] + w[:, None] * car_a[:, :2]
+    aim = np.column_stack([aim_xy, aim_pt[:, 2] + 0.9])
+    C = np.column_stack([cam_pt[:, :2], cam_pt[:, 2] + height])
+    # Den Versatz zum Auto glätten, nicht die Weltposition: Glätten einer Kurve zieht sie nach innen (bei 85 m/s
+    # und 0,25 s sind das in einer 100-m-Kurve über 2 m) – das Auto rutschte dadurch zum Bildrand.
+    here = path[pre:pre + n]
+    C = here + gauss_smooth(C - here, PATH_CAM_SMOOTH_S * fps)
+    aim = here + gauss_smooth(aim - here, PATH_AIM_SMOOTH_S * fps)
+    F = aim - C
+    F /= np.linalg.norm(F, axis=1, keepdims=True)
+    return C, F
+
+
+def _frames(scene: Scene, t_start: float, t_end: float, fps: int, z_exag: float, cam_mode: str = "path",
+            back: float = CAM_BACK, height: float = CAM_HEIGHT, ahead: float = CAM_AHEAD) -> dict:
     n = int(round((t_end - t_start) * fps))
     if n < 2:
         raise ValueError("Zeitraum zu kurz: mindestens 2 Bilder")
     ts = t_start + np.arange(n) / fps
+    pre, post = (int(round(PATH_PRE_S * fps)), int(round(PATH_POST_S * fps))) if cam_mode == "path" else (0, 0)
+    t_ext = np.concatenate([ts[0] - np.arange(pre, 0, -1) / fps, ts, ts[-1] + np.arange(1, post + 1) / fps])
     car = {}
+    xy_ext = {}
     for d in (scene.a, scene.b):
-        pos = np.empty((n, 3))
-        yaw = np.empty(n)
-        for i, t in enumerate(ts):
-            p, fw = scene.pos(d, float(t))
-            pos[i], yaw[i] = p, math.atan2(fw[1], fw[0])
+        raw = [scene.pos(d, float(t)) for t in t_ext]
+        pos_e = np.array([p for p, _ in raw])
+        yaw_e = np.array([math.atan2(fw[1], fw[0]) for _, fw in raw])
+        if cam_mode == "path":                                 # Tempo glätten (Ruckeln bei 20 fps)
+            pos_e[:, :2] = retime_xy(pos_e[:, :2], fps)
+        xy_ext[d] = pos_e[:, :2].copy()
+        pos, yaw = pos_e[pre:pre + n].copy(), yaw_e[pre:pre + n]
         pos = _zfix(pos, z_exag)
         # Auto auf die Straßenoberfläche setzen (nicht die z-Werte des Autos aus OpenF1) und der Neigung folgen
         pos[:, 2] = gauss_smooth(surface_z(_zfix(scene.P, z_exag), pos[:, :2]), Z_SMOOTH_S * fps)
@@ -184,18 +266,23 @@ def _frames(scene: Scene, t_start: float, t_end: float, fps: int, z_exag: float)
     gap = np.empty(n)
     sep = np.empty(n)
     for i, t in enumerate(ts):
-        cam = Camera(scene, float(t))
-        C[i], F[i] = cam.C, cam.f
+        if cam_mode == "classic":
+            cam = Camera(scene, float(t))
+            C[i], F[i] = cam.C, cam.f
         g = scene.gap(float(t))
         gap[i] = g if np.isfinite(g) else np.nan
         sep[i] = scene.separation(float(t))
-    C, F = _zfix(C, z_exag), F.copy()
-    # Blickrichtung mit derselben Höhenskala: z-Anteil von f umrechnen, dann neu normieren
-    F[:, 2] *= z_exag / Z_EXAG
-    F /= np.linalg.norm(F, axis=1, keepdims=True)
-    C = gauss_smooth(C, CAM_SMOOTH_S * fps)
-    F = gauss_smooth(F, CAM_SMOOTH_S * fps)
-    F /= np.linalg.norm(F, axis=1, keepdims=True)
+    if cam_mode == "path":
+        C, F = _path_camera(scene, n, pre, xy_ext[scene.b], fps, z_exag, back, height, ahead,
+                            car[scene.a][0], car[scene.b][0])
+    else:
+        C, F = _zfix(C, z_exag), F.copy()
+        # Blickrichtung mit derselben Höhenskala: z-Anteil von f umrechnen, dann neu normieren
+        F[:, 2] *= z_exag / Z_EXAG
+        F /= np.linalg.norm(F, axis=1, keepdims=True)
+        C = gauss_smooth(C, CAM_SMOOTH_S * fps)
+        F = gauss_smooth(F, CAM_SMOOTH_S * fps)
+        F /= np.linalg.norm(F, axis=1, keepdims=True)
     return {
         "t": _round(ts, 4),
         "cars": {d: {"pos": _round(p), "yaw_rad": _round(y, 4), "pitch_rad": _round(pt, 4)}
@@ -208,11 +295,11 @@ def _frames(scene: Scene, t_start: float, t_end: float, fps: int, z_exag: float)
 
 def scene_to_dict(scene: Scene, t_start: float, t_end: float, fps: int = 60, z_exag: float = 1.0,
                   cam_back: float = CAM_BACK, cam_height: float = CAM_HEIGHT,
-                  cam_ahead: float = CAM_AHEAD) -> dict:
+                  cam_ahead: float = CAM_AHEAD, cam_mode: str = "path") -> dict:
     """Szene im Zeitraum [t_start, t_end) (Sekunden ab t0 wie in chase3d) als Wörterbuch."""
     fov_h, fov_v = fov_degrees()
     with camera_rig(cam_back, cam_height, cam_ahead):
-        frames = _frames(scene, t_start, t_end, fps, z_exag)
+        frames = _frames(scene, t_start, t_end, fps, z_exag, cam_mode, cam_back, cam_height, cam_ahead)
     return {
         "schema": SCHEMA,
         "meta": {
@@ -225,6 +312,7 @@ def scene_to_dict(scene: Scene, t_start: float, t_end: float, fps: int = 60, z_e
             "pass_t": scene.pass_t, "pass_side": scene.pass_side,
             "t_start": float(t_start), "t_end": float(t_end),
             "camera_rig": {"back_m": cam_back, "height_m": cam_height, "ahead_m": cam_ahead},
+            "camera_mode": cam_mode,
         },
         "track": _track(scene, z_exag),
         "env": _env(scene, z_exag),

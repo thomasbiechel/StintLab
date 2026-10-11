@@ -8,6 +8,7 @@ type = "R"
 analysis = "race_story"
 hook     = "Antonelli's race – how it was decided"   # TODO schärfen
 result   = "Antonelli wins by 1.952 s"
+open_at = 78
 # Titelbild (reel_XX_..._cover.png) – Standardtexte aus den Daten, zum Ändern einkommentieren:
 # [reels.cover]
 # title  = "..."
