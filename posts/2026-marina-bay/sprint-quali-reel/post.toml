@@ -1,0 +1,18 @@
+# Reels Marina Bay 2026 · Sprint-Qualifying – von Hand angelegt (weekend.py baut für SQ keine Reels)
+# Aufruf: python make_post.py posts/2026-marina-bay/sprint-quali-reel/post.toml
+# Urteil zur Gelben Flagge (Kurve 7): Verstappen behält die Pole.
+[session]
+meeting_key = 1296
+type = "SQ"
+
+[[reels]]
+analysis = "ghost_lap"
+drivers  = ["VER", "RUS"]
+part     = "Q3"          # = SQ3 (die Teile heißen im Code Q1/Q2/Q3)
+# Sektoren der Pole-Runden (OpenF1 laps): S1 VER +0.148 · S2 RUS +0.066 · S3 VER +0.038 = +0.120
+hook     = "Verstappen won pole in Sector 1 – Russell took 0.066 s back in Sector 2"
+result   = "VER on pole by 0.120 s"
+replay   = false
+opening  = false
+[reels.cover]
+style = "map"

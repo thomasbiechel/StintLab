@@ -1,0 +1,34 @@
+# Bahrain Grand Prix 2026 · Kuala Lumpur · qualifying – angelegt von weekend.py
+# Titel mit TODO selbst formulieren, dann: python weekend.py <ort> Q
+[session]
+meeting_key = 1308
+type = "Q"
+
+[[slides]]
+analysis = "podium"
+title    = "VERSTAPPEN FASTEST IN Q1, Q2 AND Q3"
+subtitle = "Qualifying · top three in Q3"
+
+[[slides]]
+analysis = "results"
+title    = "FULL CLASSIFICATION"
+subtitle = "Official qualifying classification · fastest time in each part in purple"
+
+[[slides]]
+analysis = "telemetry"
+part = "Q3"
+title    = "SECTOR 3 DECIDES POLE"
+subtitle = "Fastest Q3 laps of the top two · speed and gap over the lap"
+
+[[slides]]
+analysis = "ideal_lap"
+part = "Q3"
+view = "both"
+title    = "VERSTAPPEN HAD 0.15 S MORE IN HAND"
+subtitle = "Each Q3 driver's best sectors added up vs. the pole lap"
+
+[[slides]]
+analysis = "sectors"
+part = "Q3"
+title    = "ONLY HAMILTON BREAKS VERSTAPPEN'S GRIP"
+subtitle = "Each Q3 driver's best valid sector time"

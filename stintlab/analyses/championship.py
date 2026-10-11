@@ -15,9 +15,31 @@ mehr holt. Gleichstand (entscheidet über Siege) wird nicht aufgelöst.
 
 from __future__ import annotations
 
+import json
+from functools import lru_cache
+
 from stintlab import openf1
 from stintlab.preview import team_name
-from stintlab.style import COLORS, style_axes, team_color
+from stintlab.style import COLORS, TEXT_SCALE, style_axes, team_color
+
+MONO_EM = 0.6          # Breite einer Ziffer in JetBrains Mono (Anteil der Schriftgröße)
+
+
+@lru_cache(maxsize=1)
+def _driver_names() -> dict[str, tuple[str, str | None]]:
+    """{Startnummer: (Kürzel, Team)} aus allen gecachten drivers.json, neueste Session gewinnt.
+    Grund: Die WM-Wertung enthält auch Fahrer, die im aktuellen Rennen nicht dabei waren
+    (Baku 2026: Nr. 22) – deren Kürzel steht nicht in den Fahrern dieser Session → vorher „22“."""
+    out: dict[str, tuple[str, str | None]] = {}
+    files = [f for f in openf1.CACHE_DIR.glob("*/drivers.json") if f.parent.name.isdigit()]
+    for f in sorted(files, key=lambda f: int(f.parent.name)):
+        try:
+            for d in json.loads(f.read_text(encoding="utf-8")):
+                if d.get("name_acronym") and d.get("driver_number") is not None:
+                    out[str(d["driver_number"])] = (d["name_acronym"], d.get("team_name"))
+        except (OSError, ValueError):
+            continue
+    return out
 
 ENDPOINTS = {"drivers": "championship_drivers", "teams": "championship_teams"}
 
@@ -27,6 +49,7 @@ def standings(data: dict, kind: str = "drivers", fetch=None) -> list[dict]:
     moved > 0 = Plätze nach vorne. Fahrer: name = Kürzel; Teams: name = Teamname."""
     if kind not in ENDPOINTS:
         raise ValueError('kind muss "drivers" oder "teams" sein')
+    names = _driver_names() if fetch is None else {}     # Tests mit eigenen Daten: kein Blick in den Cache
     fetch = fetch or openf1.cached_fetch
     raw = fetch(ENDPOINTS[kind], data["session_key"])
     if not raw:
@@ -36,8 +59,10 @@ def standings(data: dict, kind: str = "drivers", fetch=None) -> list[dict]:
     rows = []
     for r in raw:
         if kind == "drivers":
-            name = by_num.get(str(r.get("driver_number")), str(r.get("driver_number")))
-            team = teams.get(name)
+            num = str(r.get("driver_number"))
+            known = names.get(num, (num, None))
+            name = by_num.get(num, known[0])
+            team = teams.get(name) or known[1]
         else:
             name = team = r.get("team_name")
         pts, before = float(r.get("points_current") or 0), float(r.get("points_start") or 0)
@@ -79,18 +104,23 @@ def render_championship(ax, data: dict, kind: str = "drivers", top: int | None =
         label = r["name"] if kind == "drivers" else team_name(r["name"])
         ax.text(-name_w - lead * 0.02, y, f"{r['pos']}", ha="right", va="center", fontsize=10,
                 fontweight="bold", color=COLORS["muted"])
-        ax.text(-name_w, y, label, ha="left", va="center", fontsize=10, fontweight="bold", color=col)
+        name_t = ax.text(-name_w, y, label, ha="left", va="center", fontsize=10, fontweight="bold", color=col)
+        name_t.keep_font = True          # „Haas F1 Team“: wegen der 1 sonst Monospace → lief in den Balken
         txt = _pts(r["points"])
-        ax.text(r["points"] + lead * 0.015, y, txt, ha="left", va="center", fontsize=11, fontweight="bold",
-                color=COLORS["text"])
+        ax.annotate(txt, (r["points"], y), xytext=(4, 0), textcoords="offset points", ha="left", va="center",
+                    fontsize=11, fontweight="bold", color=COLORS["text"])
         extra = []
         if r["gained"]:
             extra.append(f"+{_pts(r['gained'])}")
         if r["moved"]:
             extra.append(("▲" if r["moved"] > 0 else "▼") + str(abs(r["moved"])))
         if extra:
-            ax.text(r["points"] + lead * (0.03 + 0.022 * len(txt)), y, "  ".join(extra), ha="left", va="center",
-                    fontsize=9, color=COLORS["accent"] if r["moved"] > 0 else COLORS["muted"], fontweight="bold")
+            # Abstand in Punkten statt Daten-Einheiten: Zahl ist Monospace und wird beim Speichern um
+            # TEXT_SCALE vergrößert – vorher überlappten „538“ und „+35“
+            gap = 4 + len(txt) * 11 * TEXT_SCALE * MONO_EM + 6
+            ax.annotate("  ".join(extra), (r["points"], y), xytext=(gap, 0), textcoords="offset points",
+                        ha="left", va="center", fontsize=9, fontweight="bold",
+                        color=COLORS["accent"] if r["moved"] > 0 else COLORS["muted"])
     ax.set_ylim(-0.7, n - 0.3)
     ax.set_xlim(-name_w - lead * 0.07, lead * 1.28)
     ax.set_xticks([t for t in ax.get_xticks() if 0 <= t <= lead * 1.28])
@@ -119,22 +149,26 @@ def render_title_fight(ax, data: dict, top: int = 8, left: dict | None = None, f
         ax.barh(y, r["points"], color=col, height=0.62, alpha=0.9 if r["alive"] else 0.8, zorder=3)
         ax.barh(y, r["max"] - r["points"], left=r["points"], height=0.62, zorder=2,
                 color=col, alpha=0.18 if r["alive"] else 0.35, edgecolor=col, linewidth=0.8)
-        ax.text(-xmax * 0.012, y, r["name"], ha="right", va="center", fontsize=10, fontweight="bold",
-                color=COLORS["text"] if r["alive"] else COLORS["muted"])
+        name_t = ax.text(-xmax * 0.012, y, r["name"], ha="right", va="center", fontsize=10, fontweight="bold",
+                         color=COLORS["text"] if r["alive"] else COLORS["muted"])
+        name_t.keep_font = True
         ax.text(r["max"] + xmax * 0.012, y, f"max {_pts(r['max'])}" if r["alive"] else "out",
                 ha="left", va="center", fontsize=9, fontweight="bold",
                 color=COLORS["text"] if r["alive"] else COLORS["muted"])
-    ax.axvline(lead, color=COLORS["accent"], linewidth=1.6, linestyle="--", zorder=5)
+    # Linie nur über den Zeilen – nicht durch die Fußnote darunter
+    ax.plot([lead, lead], [-0.7, n - 0.1], color=COLORS["accent"], linewidth=1.6, linestyle="--", zorder=5)
     ax.text(lead, n - 0.35, f"  leader {_pts(lead)}", ha="left", va="bottom", fontsize=9, fontweight="bold",
             color=COLORS["accent"])
-    ax.set_ylim(-0.7, n - 0.1)
+    # unten Platz für die zweizeilige Fußnote (wie bei best_starters), sonst liegt sie über den letzten Zeilen
+    ax.set_ylim(-0.7 - 0.09 * n - 0.6, n - 0.1)
     ax.set_xlim(-xmax * 0.1, xmax * 1.15)
     ax.set_yticks([])
     ax.set_xlabel("Championship points · solid = now, pale = still possible")
-    note = (f"{left['races']} races + {left['sprints']} sprints left = max {left['points']} points "
-            f"(every win, leader scores nothing) · ties not resolved")
+    note = (f"{left['races']} race{'s' * (left['races'] != 1)} + {left['sprints']} sprint{'s' * (left['sprints'] != 1)} left = max {left['points']} points\n"
+            f"(winning everything, leader scores nothing) · ties not resolved")
     if left.get("unknown"):
         note += f"\n{left['unknown']} weekends without a session list – counted without sprint"
-    ax.text(0.99, 0.01, note, transform=ax.transAxes, ha="right", va="bottom", fontsize=7.5,
-            color=COLORS["muted"], linespacing=1.5)
+    note_t = ax.text(0.99, 0.01, note, transform=ax.transAxes, ha="right", va="bottom", fontsize=7.5,
+                     color=COLORS["muted"], linespacing=1.5)
+    note_t.keep_font = True       # mit Ziffern sonst Monospace → lief links aus dem Bild
     return rows

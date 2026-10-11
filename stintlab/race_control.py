@@ -47,7 +47,8 @@ def neutral_laps(race_control: list[dict]) -> dict[int, str]:
       (Runden des SC vor der roten Flagge bleiben SC, ab ihr zählt RED)
     - sie endet mit "SESSION STARTED" oder einer Flagge für die ganze Strecke
     - Formationsrunden und die Runde mit dem stehenden Start zählen dazu
-      (wie Runde 1 beim normalen Start – keine Rennpace), als RED
+      (wie Runde 1 beim normalen Start – keine Rennpace), als RED – aber nur,
+      wenn es eine rote Flagge gab; sonst (Regenstart hinter dem SC) als SC
     Fällt eine Runde unter mehrere Arten, gewinnt RED vor SC vor VSC.
     """
     kinds: dict[int, str] = {}
@@ -60,6 +61,7 @@ def neutral_laps(race_control: list[dict]) -> dict[int, str]:
             if n not in kinds or _PRIORITY[kind] >= _PRIORITY[kinds[n]]:
                 kinds[n] = kind
 
+    seen_red = False
     for msg in race_control:
         lap = msg.get("lap")
         if lap is None:
@@ -71,6 +73,8 @@ def neutral_laps(race_control: list[dict]) -> dict[int, str]:
         # \b: "CHEQUERED FLAG" enthält sonst "RED FLAG" -> Zielflagge galt als rot
         is_red = (category == "Flag" and flag == "RED") or bool(_RED_FLAG.search(text)) or \
             (category == "SessionStatus" and "ABORTED" in text)
+        if is_red:
+            seen_red = True
         if is_red and active_kind != "RED":
             # rote Flagge ersetzt ein laufendes SC/VSC
             if active_kind is not None and start_lap is not None and lap > start_lap:
@@ -83,6 +87,14 @@ def neutral_laps(race_control: list[dict]) -> dict[int, str]:
             if category == "SafetyCar" and "DEPLOYED" in text:
                 virtual = "VIRTUAL" in text or bool(re.search(r"\bVSC\b", text))
                 active_kind, start_lap = ("VSC" if virtual else "SC"), lap
+            continue
+
+        # VSC geht in ein echtes SC über (Kuala Lumpur 2026, Runde 43 → 45): ab dann SC
+        if active_kind == "VSC" and category == "SafetyCar" and "DEPLOYED" in text \
+                and not ("VIRTUAL" in text or re.search(r"\bVSC\b", text)):
+            if start_lap is not None and lap > start_lap:
+                mark(start_lap, lap - 1, "VSC")
+            active_kind, start_lap = "SC", lap
             continue
 
         sc_ends = (active_kind in ("SC", "VSC") and category == "SafetyCar"
@@ -102,11 +114,30 @@ def neutral_laps(race_control: list[dict]) -> dict[int, str]:
 
     # Neustart nach roter Flagge: Formationsrunden + stehender Start. Beim ersten
     # Start des Rennens (Runde 1) nicht nötig – Runde 1 fällt ohnehin überall raus.
+    # Ohne rote Flagge (Kuala Lumpur 2026: Regenstart hinter dem Safety Car, dann
+    # stehender Start in Runde 2) sind diese Runden trotzdem neutralisiert – aber
+    # als SC, nicht als „RED FLAG“ beschriftet.
     if kinds:
         for n in sorted(restart_laps):
             if n > 1:
-                mark(n, n, "RED")
+                mark(n, n, "RED" if seen_red else "SC")
     return kinds
+
+
+def start_laps(race_control: list[dict]) -> set[int]:
+    """Runden mit Formationsrunde / stehendem Start (und die Runde danach).
+
+    Sie gelten in neutral_laps als neutralisiert (keine Rennpace), sind aber
+    kein Safety Car im eigentlichen Sinn: Ein Boxenstopp dort ist nicht
+    „billig“ (Kuala Lumpur 2026: LEC Runde 3, direkt nach dem stehenden Start).
+    """
+    laps: set[int] = set()
+    for msg in race_control:
+        text = (msg.get("message") or "").upper()
+        lap = msg.get("lap")
+        if lap and ("FORMATION LAP" in text or "STANDING START" in text):
+            laps.update({lap, lap + 1})
+    return laps
 
 
 def neutral_phases(race_control: list[dict], first: int | None = None,

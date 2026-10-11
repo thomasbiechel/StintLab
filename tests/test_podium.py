@@ -26,3 +26,11 @@ def test_race_podium_winner_and_lapped_gap():
 def test_podium_needs_three_finishers():
     with pytest.raises(ValueError, match="ersten drei"):
         podium_rows({"session_type": "R", "results": [{"driver": "ANT", "position": 1}]})
+
+
+def test_practice_podium_shows_best_lap_and_gaps():
+    data = {"session_type": "FP2", "results": [
+        {"driver": "NOR", "position": 1, "duration": 91.234, "gap": 0},
+        {"driver": "LEC", "position": 2, "duration": 91.401, "gap": 0.167},
+        {"driver": "VER", "position": 3, "duration": 91.5, "gap": 0.266}]}
+    assert [r["line"] for r in podium_rows(data)] == ["1:31.234", "+0.167 s", "+0.266 s"]

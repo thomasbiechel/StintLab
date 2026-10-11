@@ -1,0 +1,37 @@
+# Bahrain Grand Prix 2026 · Kuala Lumpur · race – angelegt von weekend.py
+# Titel mit TODO selbst formulieren, dann: python weekend.py <ort> R
+[session]
+meeting_key = 1308
+type = "R"
+
+[[slides]]
+analysis = "podium"
+title    = "VERSTAPPEN WINS FROM POLE"
+subtitle = "Race · top three at the flag"
+
+[[slides]]
+analysis = "positions"
+drivers  = ["HAM", "LEC"]
+title    = "FERRARI'S DOUBLE COMEBACK"
+subtitle = "HAM P2 → P18 → P3 · LEC P4 → P22 → P4 · up to 30 s per lap lost in the damp opening laps"
+
+[[slides]]
+analysis = "gap_between"
+drivers  = ["HAM", "LEC"]
+title    = "THE SC SAVED LECLERC"
+subtitle = "Gap HAM → LEC · 2 stops vs 4 · 15 s before the last Safety Car, 2 s at the flag"
+
+[[slides]]
+analysis = "results"
+title    = "LINDBLAD: P22 TO P10"
+subtitle = "Official race classification · +/– = places vs. starting grid"
+
+[[slides]]
+analysis = "driver_pace"
+title    = "VERSTAPPEN QUICKEST TOO"
+subtitle = "Clean race laps only · strategy and traffic affect the numbers"
+
+[[slides]]
+analysis = "team_pace"
+title    = "THREE TEAMS, THEN A SECOND"
+subtitle = "Median of both drivers' clean race laps"

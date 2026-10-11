@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
-from stintlab.reels.ghost_lap import (FPS, LAP_S, OPEN_S, REPLAY_S, REPLAY_WINDOW_S, RESULT_S,
+from stintlab.reels.ghost_lap import (FINISH_HOLD_S, FPS, LAP_S, OPEN_S, REPLAY_S, REPLAY_WINDOW_S, RESULT_S,
                                       frame_times, gap_at, lap_positions, needs_rotation, orient,
                                       replay_start, smooth_interp)
 
@@ -13,7 +13,7 @@ START = datetime(2026, 9, 12, 14, 50, tzinfo=timezone.utc)
 
 def test_frame_plan_covers_all_phases():
     frames = frame_times(91.824, 86.0)
-    assert len(frames) == int((LAP_S + REPLAY_S + RESULT_S) * FPS)
+    assert len(frames) == int((LAP_S + REPLAY_S + RESULT_S) * FPS) + int(FINISH_HOLD_S * FPS)
     laps = [t for phase, t in frames if phase == "lap"]
     assert laps[0] == 0.0 and abs(laps[-1] - 91.824) < 1e-9
     replay = [t for phase, t in frames if phase == "replay"]
@@ -74,7 +74,10 @@ def test_without_replay_the_lap_runs_longer_and_total_stays_the_same():
     without = frame_times(102.526, None)
     assert len(without) == len(with_replay)
     assert not any(phase == "replay" for phase, _ in without)
-    assert sum(phase == "lap" for phase, _ in without) == int((LAP_S + REPLAY_S) * FPS)
+    assert sum(phase == "lap" for phase, _ in without) == int((LAP_S + REPLAY_S) * FPS) + int(FINISH_HOLD_S * FPS)
+    # Am Ende hält die Karte an der Ziellinie
+    laps = [t for phase, t in without if phase == "lap"]
+    assert laps[-int(FINISH_HOLD_S * FPS):] == [102.526] * int(FINISH_HOLD_S * FPS)
 
 
 def test_open_phase_comes_first_and_runs_in_real_time():
@@ -110,3 +113,12 @@ def test_unknown_order_is_rejected():
     import pytest
     with pytest.raises(ValueError):
         frame_times(90.0, 50.0, order="random")
+
+
+def test_sector_gains_use_official_sector_times_when_both_have_them():
+    from stintlab.reels.ghost_lap import sector_gains
+    res = {"frac": np.linspace(0, 1, 11), "delta": np.linspace(0, 0.5, 11), "sector_marks": [0.3, 0.6]}
+    traces = [{"sectors": [24.609, 31.505, 39.016]}, {"sectors": [24.747, 31.201, 39.480]}]
+    g = sector_gains(res, traces)
+    assert [round(x, 3) for x in g] == [0.138, -0.304, 0.464]       # wie die Telemetrie-Slide
+    assert [round(x, 3) for x in sector_gains(res)] == [0.15, 0.15, 0.2]   # ohne Sektorzeiten: Abstandsverlauf

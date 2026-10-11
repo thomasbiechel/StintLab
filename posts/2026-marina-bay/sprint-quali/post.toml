@@ -1,0 +1,21 @@
+# Singapore Grand Prix 2026 · Marina Bay · sprint qualifying – angelegt von weekend.py
+# Titel mit TODO selbst formulieren, dann: python weekend.py <ort> SQ
+[session]
+meeting_key = 1296
+type = "SQ"
+
+[[slides]]
+analysis = "podium"
+title    = "VERSTAPPEN ON POLE BY 0.120 S"
+subtitle = "Sprint qualifying · top three"
+
+[[slides]]
+analysis = "results"
+title    = "FULL CLASSIFICATION"
+subtitle = "Official sprint qualifying classification"
+
+[[slides]]
+analysis = "ideal_lap"
+view = "both"
+title    = "TITLE TODO"   # TODO
+subtitle = "Each driver's best sectors added up vs. the fastest lap"

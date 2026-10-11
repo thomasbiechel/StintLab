@@ -42,6 +42,8 @@ data/raw/
 *.blend1
 *.fbx
 *.zip
+# Gekaufte Modelle samt Texturen: Lizenz verbietet Weitergabe/Hochladen, das Repo ist öffentlich
+assets/models/
 
 # ── Zwischenergebnisse ────────────────────────────────
 tmp/

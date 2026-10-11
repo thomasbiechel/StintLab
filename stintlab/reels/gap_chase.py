@@ -33,6 +33,12 @@ from stintlab.style import COLORS, NEUTRAL_STYLE, neutral_legend, resolve_font, 
 
 WIDTH_PX, HEIGHT_PX, DPI, FPS = 1080, 1920, 150, 60
 HOOK_S, RACE_S, RESULT_S, LOGO_S = 2.0, 12.0, 2.5, 1.0
+# Neuer Standard (05.10.2026): kein schwarzer Titel-Screen, kein Logo am Ende.
+# Der Graph läuft ab dem ersten Bild, der Haken steht die ersten HOOK_OVERLAY_S
+# Sekunden groß darüber. Grund: Baku-Reel ~50 % Absprung beim schwarzen Titel,
+# TikTok Quali-Ghost-Lap Kuala Lumpur: die meisten springen bei 0:01 ab.
+# Alter Ablauf weiter mit classic = true in der post.toml.
+HOOK_OVERLAY_S, RESULT_NEW_S = 3.0, 3.5
 
 
 def pick_pair(data: dict, drivers: list[str] | None) -> list[str]:
@@ -96,14 +102,31 @@ def neutral_blocks(race_control: list[dict], first: int, last: int) -> list[tupl
     return blocks
 
 
-def frame_positions(x: np.ndarray) -> list[tuple[str, float]]:
-    """[(Phase, Rundenwert), ...] – ein Eintrag pro Videobild."""
-    frames = [("hook", x[0])] * int(HOOK_S * FPS)
+def frame_positions(x: np.ndarray, classic: bool = False) -> list[tuple[str, float]]:
+    """[(Phase, Rundenwert), ...] – ein Eintrag pro Videobild.
+
+    classic: alter Ablauf (schwarzer Haken-Screen, Rennen, Ergebnis, Logo).
+    Sonst: Rennen ab Bild 1, die ersten HOOK_OVERLAY_S Sekunden mit dem Haken
+    als Überschrift („race_hook“), dann Ergebnis – ohne Logo.
+    """
     n = int(RACE_S * FPS)
-    frames += [("race", x[0] + (x[-1] - x[0]) * i / (n - 1)) for i in range(n)]
-    frames += [("result", x[-1])] * int(RESULT_S * FPS)
-    frames += [("logo", x[-1])] * int(LOGO_S * FPS)
+    race = [x[0] + (x[-1] - x[0]) * i / (n - 1) for i in range(n)]
+    if classic:
+        frames = [("hook", x[0])] * int(HOOK_S * FPS)
+        frames += [("race", r) for r in race]
+        frames += [("result", x[-1])] * int(RESULT_S * FPS)
+        frames += [("logo", x[-1])] * int(LOGO_S * FPS)
+        return frames
+    k = int(HOOK_OVERLAY_S * FPS)
+    frames = [("race_hook" if i < k else "race", r) for i, r in enumerate(race)]
+    frames += [("result", x[-1])] * int(RESULT_NEW_S * FPS)
     return frames
+
+
+def _fit(text: str, width: int) -> str:
+    """Lange Texte auf zwei Zeilen umbrechen, damit nichts über den Rand ragt."""
+    import textwrap
+    return "\n".join(textwrap.wrap(text, width)) if len(text) > width else text
 
 
 def render_gap_chase(data: dict, reel: dict, path: Path) -> Path:
@@ -178,6 +201,7 @@ def render_gap_chase(data: dict, reel: dict, path: Path) -> Path:
             txt_center_sub.set_text(hook if phase == "hook" else "F1 data, explained")
             return
         show_race(True)
+        txt_big.set_linespacing(1.1)
         xs = np.append(x[x <= pos], pos)
         ys = np.interp(xs, x, y)
         line.set_data(xs, ys)
@@ -186,10 +210,16 @@ def render_gap_chase(data: dict, reel: dict, path: Path) -> Path:
             fill[0].remove()
         fill[0] = ax.fill_between(xs, ys, 0, color=cb, alpha=0.15, linewidth=0, zorder=3)
         if phase == "result":
-            txt_big.set_text(result.upper())
+            txt_big.set_text(_fit(result.upper(), 22))
             txt_big.set_fontsize(28)
             txt_big.set_color(ca)
             txt_sub.set_text(f"Lap {int(x[-1])} · {b} {final:.3f} s behind")
+        elif phase == "race_hook":
+            g = float(ys[-1])
+            txt_big.set_text(_fit(hook, 26))
+            txt_big.set_fontsize(26)
+            txt_big.set_color(COLORS["text"])
+            txt_sub.set_text(f"Lap {int(round(pos))} / {int(x[-1])}  ·  {b} {abs(g):.1f} s {'behind' if g >= 0 else 'ahead'}")
         else:
             g = float(ys[-1])
             txt_big.set_text(f"{abs(g):.1f} s" if abs(g) >= 1 else f"{abs(g):.3f} s")
@@ -201,7 +231,7 @@ def render_gap_chase(data: dict, reel: dict, path: Path) -> Path:
     writer = animation.FFMpegWriter(fps=FPS, codec="libx264", extra_args=["-pix_fmt", "yuv420p", "-crf", "20"])
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    frames = frame_positions(x)
+    frames = frame_positions(x, classic=bool(reel.get("classic")))
     step = max(len(frames) // 10, 1)
     with writer.saving(fig, str(path), dpi=DPI):
         last = None

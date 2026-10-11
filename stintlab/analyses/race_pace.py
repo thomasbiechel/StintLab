@@ -106,7 +106,8 @@ def _report(stats: dict, clean: dict) -> None:
 
 
 def _lap_axis(ax) -> None:
-    ax.xaxis.set_major_formatter(lambda x, _: _fmt(x))
+    # Achse nur m:ss – mit Tausendsteln („1:40.000“) laufen die Beschriftungen ineinander
+    ax.xaxis.set_major_formatter(lambda x, _: f"{int(x // 60)}:{int(round(x % 60)):02d}")
 
 
 def render_driver_pace(ax, data: dict, min_laps: int = MIN_CLEAN_LAPS,
@@ -151,7 +152,8 @@ def render_driver_pace(ax, data: dict, min_laps: int = MIN_CLEAN_LAPS,
         notes.insert(0, f"Laps {laps[0]}–{laps[1]} only")
     if too_few:
         notes.insert(0, f"Fewer than {min_laps} clean laps: " + ", ".join(too_few))
-    ax.set_ylim(len(rows) - 0.5 + 0.55 * len(notes) + 0.3, -0.6)
+    # anderthalb Zeilenhöhen pro Hinweis – sonst überlappen die Hinweise die letzte Zeile
+    ax.set_ylim(len(rows) - 0.5 + 1.5 * len(notes) + 0.3, -0.6)
     ax.text(0.99, 0.02, "\n".join(notes), transform=ax.transAxes, ha="right", va="bottom",
             fontsize=7.5, color=COLORS["muted"], linespacing=1.5)
     return [(d, median(t)) for d, t in rows]
@@ -195,7 +197,7 @@ def render_team_pace(ax, data: dict, min_laps: int = MIN_CLEAN_LAPS) -> list[tup
             # Teamwert kommt im Wesentlichen von einem Fahrer – sagen, von wem
             label += f"  ·  {counted[t][0]} only"
         ax.text(g + right * 0.02, i, label, va="center", fontsize=8, color=COLORS["text"])
-    ax.set_xlim(-right * 0.02, right * 1.45)
+    ax.set_xlim(-right * 0.02, right * 2.1)   # Platz für „· XYZ only“ hinter dem längsten Balken
     ax.set_xlabel("Median of both drivers' clean race laps, gap to fastest team (s)")
     ax.text(0.99, 0.02, "Excluded: lap 1, pit laps, SC/VSC/red flag, laps over 107 % of own best",
             transform=ax.transAxes, ha="right", va="bottom", fontsize=7.5, color=COLORS["muted"])

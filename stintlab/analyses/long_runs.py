@@ -4,7 +4,7 @@ ERKENNUNG eines Long Runs, pro Fahrer:
   1. Gültige Runden: mit Zeit, keine Out-Lap, keine In-Lap (Runde vor einer
      Out-Lap oder mit Boxenstopp), nicht unter SC/VSC/roter Flagge.
   2. Aufeinanderfolgende gültige Runden bilden einen Run.
-  3. Runden über 107 % der besten Runde des Fahrers werden am Anfang und
+  3. Runden über 110 % der besten Runde des Fahrers werden am Anfang und
      Ende des Runs abgeschnitten (Aufwärmen, Abkühlen, rote Flagge – im
      Training haben Race-Control-Meldungen keine Rundennummer, rote Flaggen
      lassen sich also nicht über Runden sperren).
@@ -39,7 +39,10 @@ COMPOUND_COLORS = {
 }
 BAND = 0.02              # ±2 % um den Median des Runs
 MIN_SHARE = 0.8          # so viele Runden müssen im Band liegen
-SLOW = 1.07              # langsamer als 107 % der besten Runde = keine Push-Runde
+# Langsamer als 110 % der besten Runde = keine Renn-Runde (Aufwärmen, Abkühlen, Verkehr).
+# Nicht 107 %: Mit Rennsprit und ohne Quali-Modus sind Long-Run-Runden oft 7–9 %
+# langsamer als die Bestzeit – bei 107 % fielen echte Long Runs als „zu kurz“ heraus.
+SLOW = 1.10
 MAX_INTERIOR_SLOW = 1/3  # höchstens so viele langsame Runden mitten im Run
 
 

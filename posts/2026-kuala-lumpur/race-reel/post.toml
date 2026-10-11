@@ -1,0 +1,21 @@
+# Reels Kuala Lumpur 2026 · race – Comeback Hamilton und Comeback Leclerc (3D-Hook)
+# (Alternativen in scratch/: kl_race_reel_ferrari_hadjar.toml, Lindblad = pass_map LIN/HUL)
+[session]
+meeting_key = 1308
+type = "R"
+
+[[reels]]
+analysis = "comeback"
+drivers  = ["HAM"]
+order    = "moment_first"   # Manöver direkt nach dem Hook, Kurve als Rückblende
+hook     = "P2 → P18 → P3 – Hamilton's comeback"
+result   = "P18 → P3"
+pass     = { lap = 53, rival = "HAD" }
+question = "Comeback of the day – Hamilton or Leclerc?"
+
+[reels.cover]
+title  = "P18 → P3"
+kicker = "Hamilton"
+sub    = "From the back after the wet start – to the podium"
+
+# Leclerc: siehe ../race-reel-lec/post.toml

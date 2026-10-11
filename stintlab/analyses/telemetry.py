@@ -270,7 +270,7 @@ def render_telemetry(ax, data: dict, drivers: list[str] | None = None,
     ok = ~np.isnan(res["delta"])
     ax_d.fill_between(km, res["delta"], 0, where=ok & (res["delta"] >= 0), color=ca, alpha=0.35, linewidth=0)
     ax_d.fill_between(km, res["delta"], 0, where=ok & (res["delta"] < 0), color=cb, alpha=0.35, linewidth=0)
-    ax_d.set_ylabel(f"Gap (s)\n▲ {drivers[0]} ahead", fontsize=7.5)
+    ax_d.set_ylabel(f"Gap (s) · ▲ {drivers[0]} ahead", fontsize=7.5, labelpad=2)
     ax_d.set_xlabel("Lap distance (km)")
     ax_d.set_xlim(0, km[-1])
 

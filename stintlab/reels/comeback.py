@@ -194,6 +194,15 @@ def pass_time(scene, data: dict, drv: str, lap: int) -> float:
     ok = np.isfinite(g)
     ts, g = ts[ok], g[ok]
     cross = np.where((g[:-1] > 0) & (g[1:] <= 0))[0]
+    # Nur „echte“ Wechsel: 2 s davor überwiegend dahinter, 2 s danach überwiegend davor.
+    # Kuala Lumpur 2026, LEC/HAD Runde 54: Rauschen bei km 4 sah wie ein zweites
+    # Manöver aus – der letzte Wechsel war dann falsch, die 3D-Szene zeigte LEC längst vorne.
+    def sustained(i: int) -> bool:
+        before = g[(ts >= ts[i] - 2.0) & (ts <= ts[i])]
+        after = g[(ts > ts[i]) & (ts <= ts[i] + 2.0)]
+        return len(before) > 3 and len(after) > 3 and (before > 0).mean() >= 0.8 and (after <= 0).mean() >= 0.8
+    real = [i for i in cross if sustained(int(i))]
+    cross = real or list(cross)
     if not len(cross):
         raise ValueError(f"{drv}: Überholmanöver in Runde {lap} nicht in den Positionsdaten gefunden")
     i = int(cross[-1])
@@ -251,7 +260,9 @@ def acts(mine: dict[int, int], laps: list[int], final: int, decisive_lap: int, o
          events: list[dict]) -> dict | None:
     """Zwei Akte: Zielplatz erreicht, verloren, zurückgeholt. {"first", "lost", "lost_to", "low",
     "pit"} – sonst None."""
-    first = next((n for n in laps if mine[n] == final), None)
+    # Startplatz und Runde 1 zählen nicht als „erreicht“ (Kuala Lumpur 2026: LEC startete
+    # auf P4 und kam auf P4 ins Ziel – das ist kein zweiter Akt, sondern ein Comeback)
+    first = next((n for n in laps if n >= 2 and mine[n] == final), None)
     if first is None or first >= decisive_lap:
         return None
     lost = next((n for n in laps if n > first and mine[n] != final), None)
@@ -433,7 +444,7 @@ def render_comeback(data: dict, reel: dict, path: Path) -> Path:
     n_cars = max(max(p.values()) for p in pos.values())
 
     # Hatte er den Zielplatz schon einmal und hat ihn wieder verloren? Dann ist das die Story.
-    first_reach = next((n for n in laps if mine[n] == prep["final"]), None)
+    first_reach = next((n for n in laps if n >= 2 and mine[n] == prep["final"]), None)
     again = first_reach is not None and any(mine[n] != prep["final"] for n in laps if first_reach < n < lap)
     hook = reel.get("hook") or (f"P{prep['final']} after {first_reach} laps – then he had to do it all again" if again else
                                 f"P{prep['start']} → P{prep['final']} – {prep['n_track']} places gained on track")

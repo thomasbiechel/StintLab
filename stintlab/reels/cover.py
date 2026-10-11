@@ -14,6 +14,7 @@ In der post.toml (alles optional):
     kicker = "ANTONELLI · MONZA 2026"   # kleine Zeile darüber
     sub = "22 places gained on track"   # Zeile darunter
     at = 6301.2                         # Szenenzeit (s) statt der automatisch gewählten
+    style = "map"                       # Ghost Lap: Streckenkarte statt 3D-Bild (wer wo schneller war)
     enabled = false                     # kein Cover
 """
 
@@ -117,15 +118,32 @@ def _zoom_on_cars(ax, scene, t: float) -> None:
     ax.set_ylim(lo, lo + 2 * z)
 
 
+def cover_style(reel: dict) -> str:
+    cfg = cover_config(reel) or {}
+    style = cfg.get("style", "3d")
+    if style not in ("3d", "map"):
+        raise ValueError('cover style muss "3d" oder "map" sein')
+    return style
+
+
 def render_cover(scene, t: float, path: Path, title: str, kicker: str = "", sub: str = "",
-                 meta: str = "") -> Path:
-    """Ein 3D-Bild der Szene zur Zeit t, darüber Kicker, Titel, Untertitel und Wortmarke."""
-    from stintlab.reels.chase3d import draw_scene
+                 meta: str = "", background=None) -> Path:
+    """Ein 3D-Bild der Szene zur Zeit t, darüber Kicker, Titel, Untertitel und Wortmarke.
+    background(ax): zeichnet stattdessen ein eigenes Bild (z. B. Streckenkarte); ax deckt die
+    ganze Fläche ab, Koordinaten 0–1 (x) und 0–1 (y)."""
     path = Path(path)
     fig = plt.figure(figsize=(WIDTH_PX / DPI, HEIGHT_PX / DPI), dpi=DPI, facecolor=COLORS["bg"])
     ax = fig.add_axes([0, 0, 1, 1], zorder=-2)
-    draw_scene(ax, scene, t)
-    _zoom_on_cars(ax, scene, t)
+    if background is not None:
+        ax.set_facecolor(COLORS["bg"])
+        ax.axis("off")
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        background(ax)
+    else:
+        from stintlab.reels.chase3d import draw_scene
+        draw_scene(ax, scene, t)
+        _zoom_on_cars(ax, scene, t)
 
     # Abdunkeln oben (Titel) und unten (Wortmarke) – die Mitte bleibt hell
     shade_ax = fig.add_axes([0, 0, 1, 1], zorder=-1)
@@ -189,7 +207,7 @@ WITH_COVER = {"comeback", "ghost_lap", "race_story", "gain_loss"}     # Reels mi
 
 
 def make_cover(reel: dict, video: Path, scene, t: float, title: str, kicker: str = "", sub: str = "",
-               meta: str = "") -> Path | None:
+               meta: str = "", background=None) -> Path | None:
     """Von den Reels aufgerufen: Cover mit den Standardtexten des Reels, post.toml kann alles überschreiben.
     Ein Fehler hier bricht das Reel nicht ab."""
     cfg = cover_config(reel)
@@ -199,7 +217,7 @@ def make_cover(reel: dict, video: Path, scene, t: float, title: str, kicker: str
         return None
     try:
         out = render_cover(scene, float(cfg.get("at", t)), cover_path(video), cfg.get("title", title),
-                           cfg.get("kicker", kicker), cfg.get("sub", sub), cfg.get("meta", meta))
+                           cfg.get("kicker", kicker), cfg.get("sub", sub), cfg.get("meta", meta), background)
         print(f"✓ {out}")
     except Exception as exc:
         plt.close("all")

@@ -5,7 +5,8 @@ sind urheberrechtlich geschützt. Kürzel, Startnummer und Teamfarbe reichen zum
 Erkennen und sind unbedenklich.
 
 Qualifying/Sprint-Qualifying: Zeit von P1 im letzten Abschnitt (Q3/SQ3),
-Abstände von P2/P3 in diesem Abschnitt. Rennen/Sprint: P1 „WINNER“, dahinter
+Abstände von P2/P3 in diesem Abschnitt. Freies Training (FP1–FP3): schnellste
+Runde von P1, dahinter der Abstand auf diese Runde. Rennen/Sprint: P1 „WINNER“, dahinter
 der offizielle Abstand (oder „+1 LAP“).
 """
 
@@ -37,11 +38,12 @@ def podium_rows(data: dict) -> list[dict]:
                   key=lambda r: r["position"])
     if len(rows) < 3:
         raise ValueError("Podium braucht ein Ergebnis mit den ersten drei")
-    quali = data.get("session_type") in ("Q", "SQ")
+    # Sessions, in denen nach schnellster Runde gewertet wird: P1 zeigt seine Zeit
+    timed = data.get("session_type") in ("Q", "SQ", "FP1", "FP2", "FP3")
     out = []
     for r in rows:
         if r["position"] == 1:
-            line = _fmt_time(_last(r.get("duration"))) if quali and _last(r.get("duration")) else "WINNER"
+            line = _fmt_time(_last(r.get("duration"))) if timed and _last(r.get("duration")) else "WINNER"
         else:
             g = _last(r.get("gap"))
             line = f"+{g:.3f} s" if isinstance(g, (int, float)) else str(g or "")

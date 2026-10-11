@@ -1,0 +1,24 @@
+# Reels Kuala Lumpur 2026 · qualifying – angelegt von weekend.py
+# hook: Zeile 1 – Zeile 2 (wird am „ – “ geteilt). open_at = Stelle des 3D-Anfangs (siehe Reel-Doku)
+[session]
+meeting_key = 1308
+type = "Q"
+
+[[reels]]
+analysis = "ghost_lap"
+part = "Q3"
+hook     = "Hamilton led after Sector 2 – then came the back straight"
+result   = "VER on pole by 0.298 s"
+# 3D nur einmal: Ausgang Haarnadel → Gegengerade (km 4,2), wo VER die Pole holt.
+# Automatik hätte den Messfehler-Ausschlag bei km 3,1 gewählt.
+open_at  = 74.0      # bleibt für das Titelbild
+replay   = false
+opening  = false      # Test: ohne 3D-Anfang, Karte dafür langsamer (15,5 s statt 12 s)
+# Titelbild (reel_XX_..._cover.png) – Standardtexte aus den Daten, zum Ändern einkommentieren:
+# [reels.cover]
+# title  = "..."
+# kicker = "..."
+# sub    = "..."
+
+[reels.cover]
+style = "map"          # Titelbild als Streckenkarte statt 3D

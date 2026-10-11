@@ -1,0 +1,24 @@
+# Singapore Grand Prix 2026 · Marina Bay · sprint qualifying – wo wurde die Pole entschieden? (Karussell)
+# Aufruf: python make_post.py posts/2026-marina-bay/sprint-quali-pole/post.toml
+# Urteil zur Gelben Flagge (Kurve 7): Verstappen behält die Pole.
+[session]
+meeting_key = 1296
+type = "SQ"
+
+[[slides]]
+analysis = "podium"
+title    = "VERSTAPPEN ON POLE BY 0.120 S"
+subtitle = "Sprint qualifying · top three"
+
+[[slides]]
+analysis = "sectors"
+part     = "Q3"
+title    = "ONLY 6TH IN SECTOR 2 – STILL ON POLE"
+subtitle = "Each SQ3 driver's best valid sector time"
+
+[[slides]]
+analysis = "telemetry"
+part     = "Q3"
+drivers  = ["VER", "RUS"]
+title    = "WHERE VERSTAPPEN BUILT THE GAP"
+subtitle = "Pole laps of the top two · speed and gap over the lap"

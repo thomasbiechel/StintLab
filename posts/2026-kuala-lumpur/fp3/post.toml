@@ -1,0 +1,27 @@
+# Bahrain Grand Prix 2026 · Kuala Lumpur · FP3 – angelegt von weekend.py
+# Titel mit TODO selbst formulieren, dann: python weekend.py <ort> FP3
+[session]
+meeting_key = 1308
+type = "FP3"
+
+[[slides]]
+analysis = "podium"
+title    = "ANTONELLI HOLDS OFF BOTH RED BULLS"
+subtitle = "FP3 · fastest laps · fuel loads and programmes unknown"
+
+[[slides]]
+analysis = "results"
+title    = "ANTONELLI FASTEST IN FP3"
+subtitle = "Official classification · tyre = compound of each driver's fastest lap"
+
+[[slides]]
+analysis = "ideal_lap"
+view = "ideal"
+title    = "ANTONELLI LEFT NOTHING ON THE TABLE"
+subtitle = "Best FP3 sectors added up, all compounds · ▲▼ = places vs. best lap"
+note = ""   # Legende steht schon im Untertitel
+
+[[slides]]
+analysis = "sectors"
+title    = "THREE SECTORS, THREE DIFFERENT LEADERS"
+subtitle = "Each driver's best valid FP3 sector time · all compounds"

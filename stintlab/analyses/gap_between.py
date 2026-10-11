@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from stintlab.race_control import restricted_laps
+from stintlab.race_control import neutral_laps, restricted_laps, start_laps
 from stintlab.style import COLORS, shade_neutral, style_axes, team_color
 
 
@@ -119,32 +119,40 @@ def render_gap_between(ax, data: dict, driver_a: str, driver_b: str,
     ax.plot(laps, values, color=COLORS["text"], linewidth=1.4)
     ax.axhline(0, color=COLORS["muted"], linewidth=0.8)
 
-    # Boxenstopps: Beschriftung von driver_a nach links, von driver_b nach
-    # rechts, damit sie sich bei nahen Stopps nicht überlagern
-    for stop in data.get("pit_stops", []):
-        drv, lap = stop.get("driver"), stop.get("lap")
-        if drv in (driver_a, driver_b) and lap in gaps:
-            is_a = drv == driver_a
-            color = color_a if is_a else color_b
-            ax.scatter([lap], [gaps[lap]], s=45, color=color, zorder=5,
-                       edgecolor=COLORS["bg"], linewidth=1)
-            label = f"{drv} pit"
-            if stop.get("duration"):
-                label += f" · {stop['duration']:.1f} s"
-            ax.annotate(label, (lap, gaps[lap]), xytext=(-8 if is_a else 8, 0),
-                        textcoords="offset points", ha="right" if is_a else "left",
-                        va="center", fontsize=8, color=color, fontweight="bold")
+    # y-Achse: nur so weit wie die Werte reichen (+25 %), auf der leeren Seite
+    # etwas Platz für die Beschriftung. Früher symmetrisch bei Führungswechsel –
+    # Kuala Lumpur 2026 (HAM/LEC: −10 bis +40 s) ließ das die halbe Grafik leer.
+    hi, lo = max(max(values), 0) * 1.25, min(min(values), 0) * 1.25
+    margin = (hi - lo) * 0.10
+    ax.set_ylim(lo - margin, hi + margin)
+    span = (hi - lo) + 2 * margin
 
-    # y-Achse: symmetrisch, wenn die Führung wechselt – sonst nur die Seite,
-    # auf der die Werte liegen, damit keine halbe Grafik leer bleibt
-    limit = max(abs(v) for v in values) * 1.25
-    margin = limit * 0.12  # etwas Platz für die Beschriftung auf der leeren Seite
-    if min(values) >= 0:
-        ax.set_ylim(-margin, limit)
-    elif max(values) <= 0:
-        ax.set_ylim(-limit, margin)
-    else:
-        ax.set_ylim(-limit, limit)
+    # Boxenstopps: Beschriftung von driver_a nach links, von driver_b nach rechts.
+    # Unter SC/VSC steht das dabei – ein Stopp dort kostet deutlich weniger Zeit.
+    # Liegen zwei Beschriftungen dicht beieinander (gleiche Runde, ähnlicher
+    # Abstand), wird die spätere nach oben/unten versetzt, statt sie zu überdecken.
+    neutral = neutral_laps(data.get("race_control", []))
+    for n in start_laps(data.get("race_control", [])):
+        neutral.pop(n, None)                           # Start/Neustart ist kein billiger SC-Stopp
+    placed: list[tuple[int, float, int]] = []          # (Runde, Abstand, Versatz in pt)
+    stops = [st for st in data.get("pit_stops", [])
+             if st.get("driver") in (driver_a, driver_b) and st.get("lap") in gaps]
+    for stop in sorted(stops, key=lambda st: st["lap"]):
+        drv, lap = stop["driver"], stop["lap"]
+        is_a = drv == driver_a
+        color = color_a if is_a else color_b
+        y = gaps[lap]
+        ax.scatter([lap], [y], s=45, color=color, zorder=5, edgecolor=COLORS["bg"], linewidth=1)
+        kind = neutral.get(lap)
+        label = f"{drv} pit" + (f" · under {kind}" if kind in ("SC", "VSC") else "")
+        dy = 0
+        for p_lap, p_y, p_dy in placed:
+            if abs(p_lap - lap) <= 4 and abs(p_y - y) < span * 0.06 and p_dy == dy:
+                dy = p_dy + 14 if p_dy >= 0 else p_dy - 14
+        placed.append((lap, y, dy))
+        ax.annotate(label, (lap, y), xytext=(-8 if is_a else 8, dy),
+                    textcoords="offset points", ha="right" if is_a else "left",
+                    va="center", fontsize=8, color=color, fontweight="bold")
 
     if max(values) > 0:
         ax.text(0.01, 0.97, f"▲ {driver_a} ahead", transform=ax.transAxes,

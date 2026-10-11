@@ -1,0 +1,18 @@
+# Reel Kuala Lumpur 2026 · race – Comeback Leclerc (eigener Ordner, damit das HAM-Reel bleibt)
+[session]
+meeting_key = 1308
+type = "R"
+
+[[reels]]
+analysis = "comeback"
+drivers  = ["LEC"]
+order    = "moment_first"
+hook     = "Last after 3 laps – P4 at the flag"
+result   = "P22 → P4"
+pass     = { lap = 54, rival = "HAD" }
+question = "Comeback of the day – Hamilton or Leclerc?"
+
+[reels.cover]
+title  = "P22 → P4"
+kicker = "Leclerc"
+sub    = "From last place in the wet opening laps"

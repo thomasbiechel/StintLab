@@ -93,7 +93,8 @@ def ideal_laps(data: dict, compound: str | None = None, part: str | None = None)
 
 def render_ideal_lap(ax, data: dict, drivers: list[str] | None = None,
                      compound: str | None = None, top: int | None = None,
-                     view: str = "both", part: str | None = None) -> list[dict]:
+                     view: str = "both", part: str | None = None,
+                     note: str | None = None, flag: list[str] | None = None) -> list[dict]:
     """view:
     - "best":  Rangliste der tatsächlichen Bestzeiten
     - "ideal": Rangliste der idealen Runden, mit Plätzen gewonnen/verloren
@@ -102,7 +103,11 @@ def render_ideal_lap(ax, data: dict, drivers: list[str] | None = None,
                Abstand zur SCHNELLSTEN ECHTEN Runde (im Q3 also zur Pole).
                Negativ = die ideale Runde wäre schneller gewesen.
     part: nur ein Qualifying-Abschnitt, z. B. "Q3".
+    note: eigene Fußnote statt der Standard-Legende unten rechts.
+    flag: Fahrer mit Sternchen (*), ohne ▲/▼ – z. B. wenn die Bestzeit auf
+          einer anderen Mischung gefahren wurde und der Vergleich hinkt.
     """
+    flag = set(flag or [])
     if view not in ("both", "best", "ideal"):
         raise ValueError('view muss "both", "best" oder "ideal" sein')
     if part is not None and part not in PARTS:
@@ -151,7 +156,7 @@ def render_ideal_lap(ax, data: dict, drivers: list[str] | None = None,
     ax.invert_yaxis()
 
     ax.set_yticks(y)
-    ax.set_yticklabels([r["driver"] for r in rows], fontsize=9, fontweight="bold")
+    ax.set_yticklabels([r["driver"] + ("*" if r["driver"] in flag else "") for r in rows], fontsize=9, fontweight="bold")
     for tick, c in zip(ax.get_yticklabels(), colors):
         tick.set_color(c)
 
@@ -172,7 +177,7 @@ def render_ideal_lap(ax, data: dict, drivers: list[str] | None = None,
                     label += f"  ·  {r['unused']:.2f} s left"
         else:
             label = f"{_fmt(r[key])}" if d == 0 else f"+{d:.2f} s"
-        if view == "ideal" and r["driver"] in best_rank:
+        if view == "ideal" and r["driver"] in best_rank and r["driver"] not in flag:
             change = best_rank[r["driver"]] - i
             if change:
                 label += f"  ·  {'▲' if change > 0 else '▼'}{abs(change)}"
@@ -187,12 +192,14 @@ def render_ideal_lap(ax, data: dict, drivers: list[str] | None = None,
     notes = {"both": [f"solid = ideal lap  ·  outline = actual best lap  ·  0 = {ref}"],
              "ideal": ["▲▼ = places gained/lost vs. best-lap order"],
              "best": []}[view]
+    if note is not None:
+        notes = textwrap.wrap(note, width=70) if note else []
     if missing:
         what = "valid lap" if view == "best" else "full lap"
         head = f"No {what}{' on ' + compound.capitalize() + 's' if compound else ''}{' in ' + part if part else ''}: "
         notes = textwrap.wrap(head + ", ".join(missing), width=70) + notes
     if notes:
-        ax.set_ylim(len(rows) - 0.5 + 0.55 * len(notes) + 0.3, -0.6)
+        ax.set_ylim(len(rows) - 0.5 + 0.8 * len(notes) + 0.6, -0.6)
         ax.text(0.99, 0.02, "\n".join(notes), transform=ax.transAxes, ha="right", va="bottom",
                 fontsize=7.5, color=COLORS["muted"], linespacing=1.5)
     return rows

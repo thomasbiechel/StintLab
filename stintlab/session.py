@@ -15,6 +15,7 @@ Verteilen der Messpunkte auf die Runden (der Fehler im Demo-Skript).
 from __future__ import annotations
 
 import bisect
+import json
 from datetime import datetime, timedelta
 
 from stintlab import openf1
@@ -184,6 +185,8 @@ def load_session(meeting_key: int, session_type: str, refresh: bool = False) -> 
     """Lädt eine Session (beim ersten Mal von OpenF1, danach aus dem Cache)."""
     session_key = openf1.find_session_key(meeting_key, session_type)
     raw = {ep: openf1.cached_fetch(ep, session_key, refresh) for ep in ENDPOINTS}
+    if not raw["drivers"]:
+        raw["drivers"] = _drivers_fallback(meeting_key, session_key)
     data = build_session_data(raw)
     data["session_type"] = session_type
     data["session_key"] = session_key
@@ -196,6 +199,33 @@ def load_session(meeting_key: int, session_type: str, refresh: bool = False) -> 
         grid_key = openf1.find_session_key(meeting_key, grid_session)
         data["grid"] = build_grid(openf1.cached_fetch("starting_grid", grid_key, refresh), data["numbers"])
     return data
+
+
+def _drivers_fallback(meeting_key: int, session_key: int) -> list[dict]:
+    """Fahrerliste, wenn die gemerkte leer ist.
+
+    Passiert, wenn eine Session abgefragt wurde, bevor OpenF1 Fahrer dafür hatte
+    (Kuala Lumpur 2026: Rennen schon am Montag davor geladen → drivers.json = []).
+    Ohne Fahrerliste fehlen Kürzel und Teams: Startnummern statt Namen, alles grau.
+    1. neu von OpenF1 laden; 2. ohne Netz: Fahrerliste einer anderen Session
+    desselben Wochenendes aus dem Cache (Startnummern und Teams sind gleich).
+    """
+    try:
+        drivers = openf1.cached_fetch("drivers", session_key, refresh=True)
+        if drivers:
+            return drivers
+    except Exception:                       # kein Netz / Rate-Limit → Cache-Fallback
+        pass
+    for s in openf1.sessions_of(meeting_key):
+        key = s.get("session_key")
+        path = openf1.CACHE_DIR / str(key) / "drivers.json"
+        if key != session_key and path.exists():
+            drivers = json.loads(path.read_text(encoding="utf-8"))
+            if drivers:
+                print(f"ℹ Fahrerliste fehlt für Session {session_key} – nutze {s.get('session_name')} ({key})")
+                return drivers
+    print(f"⚠ Keine Fahrerliste für Session {session_key} – Startnummern statt Kürzel")
+    return []
 
 
 def build_grid(starting_grid: list[dict], numbers: dict[str, str]) -> dict[str, int]:

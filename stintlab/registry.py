@@ -22,6 +22,8 @@ from stintlab.analyses.results import render_results
 from stintlab.analyses.sectors import render_sectors
 from stintlab.analyses.sector_delta import render_sector_delta
 from stintlab.analyses.speed import render_speed_vs_sector, render_top_speed
+from stintlab.analyses.speed_trend import render_speed_trend
+from stintlab.reels.pass_map import render_pass_map
 from stintlab.reels.gap_chase import render_gap_chase
 from stintlab.reels.race_story import render_race_story
 from stintlab.reels.comeback import render_comeback
@@ -80,7 +82,8 @@ def _ideal_lap(ax, data, slide):
     if top is not None and (not isinstance(top, int) or top < 2):
         raise ValueError("top muss eine ganze Zahl ab 2 sein, z. B. top = 10")
     render_ideal_lap(ax, data, slide.get("drivers") or None, slide.get("compound"), top,
-                     slide.get("view", "both"), slide.get("part"))
+                     slide.get("view", "both"), slide.get("part"),
+                     slide.get("note"), slide.get("flag"))
 
 
 def _sectors(ax, data, slide):
@@ -137,6 +140,34 @@ def _team_pace(ax, data, slide):
 
 def _top_speed(ax, data, slide):
     render_top_speed(ax, data, slide.get("part"), slide.get("compound"))
+
+
+def _speed_trend(ax, data, slide):
+    """Vorwochen (je Qualifying) + Sessions dieses Wochenendes.
+    team = "Mercedes", weeks = 3 (Vorwochen), this_weekend = ["FP1", "FP2", "FP3", "Q"]."""
+    from stintlab.season import split_at
+    from stintlab.session import load_session
+    from stintlab.openf1 import meeting_by_key
+    team = slide.get("team")
+    if not team:
+        raise ValueError('speed_trend braucht team, z. B. team = "Mercedes"')
+    weeks = int(slide.get("weeks", 3))
+    here = slide.get("this_weekend", [data.get("session_type", "Q")])
+    done, _ = split_at(data["meeting_key"])
+    points = []
+    for m in done[:-1][-weeks:] if weeks else []:
+        try:
+            points.append((f"{m.get('location')}", load_session(m["meeting_key"], "Q")))
+        except Exception as exc:             # Wochenende ohne Daten → weglassen, aber sagen
+            print(f"  ⚠ speed_trend: {m.get('location')} übersprungen ({exc})")
+    n_before = len(points)
+    place = (meeting_by_key(data["meeting_key"]) or {}).get("location", "")
+    for st in here:
+        sess = data if st == data.get("session_type") else load_session(data["meeting_key"], st)
+        points.append((st, sess))
+    label = slide.get("split_label", "")
+    label = f"{place.upper()}{' · ' + label if label else ''}" if place else label
+    render_speed_trend(ax, points, team, n_before - 1 if n_before else None, label)
 
 
 def _speed_vs_sector(ax, data, slide):
@@ -197,7 +228,7 @@ def _teammate_duel(ax, data, slide):
 
 
 ANALYSES = {
-    "podium": {"render": _podium, "sessions": {"Q", "SQ", "R", "S"}},
+    "podium": {"render": _podium, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "gap_between": {"render": _gap_between, "sessions": {"R", "S"}},
     "pit_cycle": {"render": _pit_cycle, "sessions": {"R", "S"}},
     "lap_times": {"render": _lap_times, "sessions": {"R", "S", "FP1", "FP2", "FP3"}},
@@ -218,6 +249,7 @@ ANALYSES = {
     "tow_split": {"render": lambda ax, data, slide: render_tow_split(ax, data), "sessions": {"R", "S"}},
     "sector_delta": {"render": _sector_delta, "sessions": {"R", "S", "FP1", "FP2", "FP3"}},
     "top_speed": {"render": _top_speed, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
+    "speed_trend": {"render": _speed_trend, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "speed_vs_sector": {"render": _speed_vs_sector, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "team_pace": {"render": _team_pace, "sessions": {"R", "S"}},
     # Race Preview (Donnerstag) – Daten aus stintlab.preview, keine einzelne Session
@@ -235,4 +267,5 @@ REELS = {
     "race_story": render_race_story,
     "comeback": render_comeback,
     "gain_loss": render_gain_loss,
+    "pass_map": render_pass_map,
 }

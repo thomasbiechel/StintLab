@@ -88,6 +88,8 @@ from stintlab.style import COLORS, resolve_font, team_color
 WIDTH_PX, HEIGHT_PX, DPI, FPS = 1080, 1920, 150, 60
 OPEN_S, LAP_S, REPLAY_S, RESULT_S = 3.5, 7.0, 5.0, 3.5   # Ergebnis länger: Sektor-Balken wachsen nacheinander
 ASK_S = 2.5            # Frage an die Zuschauer am Ende
+HOOK_MAP_S = 2.5      # opening = false: so lange steht der Haken über der Karte
+FINISH_HOLD_S = 1.5    # Karte bleibt an der Ziellinie stehen (Endabstand + S3 lesbar)
 REPLAY_WINDOW_S = 4.0  # so viele echte Sekunden zeigt die Zeitlupe (5 s Video → 0,8-fach)
 TRAIL_S = 2.0          # Schweif hinter den Punkten, in echten Sekunden
 ZOOM_M = 160.0         # Breite des Zoom-Ausschnitts in Metern
@@ -167,7 +169,9 @@ def pick_drivers(data: dict, drivers: list[str] | None, part: str | None,
 
 
 def pace_positions(t: np.ndarray, x: np.ndarray, y: np.ndarray, trace: dict,
-                   lap_time: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+                   lap_time: float, path: tuple[np.ndarray, np.ndarray] | None = None,
+                   shift: tuple[np.ndarray, np.ndarray] | None = None
+                   ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Position über die Zeit aus TEMPO + BAHN statt aus den Zeitstempeln.
 
     Die Positionsdaten liefern die Form der Bahn (wo liegt die Strecke), das
@@ -176,20 +180,58 @@ def pace_positions(t: np.ndarray, x: np.ndarray, y: np.ndarray, trace: dict,
     und holt die ~60 m nie auf; das Tempo ist dort repariert (frozen_runs) und
     an den offiziellen Sektorzeiten ausgerichtet. Außerhalb der Runde (Rand
     für den Schweif) bleiben die geglätteten Rohdaten.
+
+    path: gemeinsame Bahn (x, y) für beide Fahrer – siehe lap_path().
+    shift: seitlicher Versatz (dx, dy) je Bahnpunkt – erst NACH der Zuordnung
+           Anteil → Punkt addiert. Eine versetzte Bahn ist in Kurven kürzer oder
+           länger (Haarnadel: π × 2,3 m ≈ 7 m) und würde den Abstand verfälschen.
     """
     inside = (t >= 0) & (t <= lap_time)
     if inside.sum() < 10 or "frac" not in trace:
         return t, x, y
-    xi, yi = x[inside], y[inside]
+    xi, yi = path if path is not None else (x[inside], y[inside])
+    ox, oy = shift if shift is not None else (np.zeros_like(xi), np.zeros_like(yi))
     s = np.concatenate([[0.0], np.cumsum(np.hypot(np.diff(xi), np.diff(yi)))])
     keep = np.concatenate([[True], np.diff(s) > 0])        # hängende Punkte = gleiche Stelle
-    s, xi, yi = s[keep], xi[keep], yi[keep]
+    s, xi, yi, ox, oy = s[keep], xi[keep], yi[keep], ox[keep], oy[keep]
     f = s / s[-1]
     tt, ff = trace["t"], trace["frac"]
     before, after = t < 0, t > lap_time
     return (np.concatenate([t[before], tt, t[after]]),
-            np.concatenate([x[before], np.interp(ff, f, xi), x[after]]),
-            np.concatenate([y[before], np.interp(ff, f, yi), y[after]]))
+            np.concatenate([x[before], np.interp(ff, f, xi) + np.interp(ff, f, ox), x[after]]),
+            np.concatenate([y[before], np.interp(ff, f, yi) + np.interp(ff, f, oy), y[after]]))
+
+
+def lap_path(t: np.ndarray, x: np.ndarray, y: np.ndarray, lap_time: float) -> tuple[np.ndarray, np.ndarray]:
+    """Bahn einer Runde (nur innerhalb der Runde) – Referenzlinie für BEIDE Fahrer.
+
+    WARUM EINE GEMEINSAME BAHN: Jede eigene Bahn beginnt dort, wo das Auto zum
+    OpenF1-Rundenstart war. Ist dieser Zeitstempel um ein paar Zehntel daneben,
+    ist die ganze Bahn verschoben – Kuala Lumpur 2026 Q3: VER sah auf der Karte
+    und in 3D fast die ganze Runde ~0,2–0,4 s vorne aus, auch in S2, wo HAM laut
+    Sektorzeiten vorne lag. Auf derselben Bahn ist der Abstand auf der Strecke
+    genau der Abstand aus der Telemetrie (der oben als Zahl steht).
+    """
+    inside = (t >= 0) & (t <= lap_time)
+    return x[inside], y[inside]
+
+
+LANE_M = 2.3   # seitlicher Versatz von B auf der gemeinsamen Bahn (Auto ~2 m breit)
+
+
+def lane_shift(x: np.ndarray, y: np.ndarray, metres: float, length_m: float) -> tuple[np.ndarray, np.ndarray]:
+    """Bahn seitlich versetzen, damit die Autos auf derselben Linie nicht
+    übereinander liegen (in 3D sah ein Abstand von 0,1 s sonst wie EIN Auto aus).
+    Richtung: Normale der geglätteten Bahn; Länge in Metern über die Rundenlänge."""
+    s = np.concatenate([[0.0], np.cumsum(np.hypot(np.diff(x), np.diff(y)))])
+    per_m = s[-1] / length_m if length_m else 1.0
+    k = 9
+    xs = np.convolve(np.pad(x, k, mode="edge"), np.ones(2 * k + 1) / (2 * k + 1), mode="same")[k:-k]
+    ys = np.convolve(np.pad(y, k, mode="edge"), np.ones(2 * k + 1) / (2 * k + 1), mode="same")[k:-k]
+    dx, dy = np.gradient(xs), np.gradient(ys)
+    n = np.hypot(dx, dy)
+    n[n == 0] = 1.0
+    return (dy / n) * metres * per_m, -(dx / n) * metres * per_m
 
 
 def _clean_location(loc: list[dict], lap: dict, t: np.ndarray, x: np.ndarray, y: np.ndarray) -> list[dict]:
@@ -209,12 +251,18 @@ def prepare(data: dict, drivers: list[str] | None = None, part: str | None = Non
     traces = [_driver_trace(data, d, l) for d, l in zip(drivers, laps)]
     res = compare(*traces)
 
-    pos, clean_loc = [], {}
+    pos, clean_loc, path = [], {}, None
     for d, lap, tr in zip(drivers, laps, traces):
         loc = data.get("location", {}).get(d)
         if loc is None:
             loc = openf1.cached_fetch_driver("location", data["session_key"], data["numbers"][d])
-        t, x, y = pace_positions(*lap_positions(loc, lap), tr, float(lap["LapTime"]))
+        raw = lap_positions(loc, lap)
+        if path is None:                     # Bahn von A gilt für beide
+            path = lap_path(*raw, float(lap["LapTime"]))
+            shift = None
+        else:                                # B leicht daneben, sonst übereinander
+            shift = lane_shift(*path, LANE_M, res["length_m"])
+        t, x, y = pace_positions(*raw, tr, float(lap["LapTime"]), path, shift)
         pos.append((t, x, y))
         clean_loc[d] = _clean_location(loc, lap, t, x, y)
     rotate = needs_rotation(pos[0][1], pos[0][2])
@@ -462,9 +510,18 @@ def gain_profile(frac: np.ndarray, res: dict, width: float = PAINT_SMOOTH) -> tu
     return np.where(at >= 0, 1.0, -1.0), np.clip(np.abs(at) / ref, 0.2, 1.0)
 
 
-def sector_gains(res: dict) -> list[float]:
+def sector_gains(res: dict, traces: list[dict] | None = None) -> list[float]:
     """Zeit, die A in jedem Sektor gewinnt (> 0) oder verliert (< 0). Summe = Abstand der Runde.
-    Leer, wenn die Sektorgrenzen fehlen."""
+    Leer, wenn die Sektorgrenzen fehlen.
+
+    traces: haben beide Fahrer offizielle Sektorzeiten, gelten DIESE (wie auf der
+    Telemetrie-Slide). Kuala Lumpur 2026 Q3: aus dem Abstandsverlauf kam S1 VER +0.19 /
+    S2 HAM +0.35 heraus, offiziell sind es +0.138 / +0.304 – Post und Reel widersprachen sich.
+    """
+    if traces and len(traces) == 2:
+        sa, sb = traces[0].get("sectors"), traces[1].get("sectors")
+        if sa and sb and len(sa) == 3 and len(sb) == 3 and all(sa) and all(sb):
+            return [float(b - a) for a, b in zip(sa, sb)]
     marks = [0.0] + list(res.get("sector_marks") or []) + [1.0]
     if len(marks) != 4:
         return []
@@ -536,12 +593,16 @@ ORDERS = ("classic", "moment_first")
 
 
 def frame_times(lap_time: float, replay_from: float | None,
-                open_from: float | None = None, order: str = "classic") -> list[tuple[str, float]]:
+                open_from: float | None = None, order: str = "classic",
+                lap_s: float | None = None) -> list[tuple[str, float]]:
     """[(Phase, Rundenzeit in s), ...] – ein Eintrag pro Videobild.
 
     replay_from = None: keine Zeitlupe – die Runde bekommt deren Zeit dazu und
     läuft langsamer (Gesamtlänge bleibt gleich).
     open_from = None: ohne 3D-Anfang (z. B. in Tests ohne Positionsdaten).
+    lap_s: Dauer der Runde auf der Karte in Video-Sekunden (Standard LAP_S bzw.
+           LAP_S + REPLAY_S ohne Zeitlupe). Mit opening = false bekommt die Karte
+           zusätzlich die Zeit des 3D-Anfangs und läuft langsamer.
     order:
       "classic"      3D-Anfang → ganze Runde (Karte) → Zeitlupe → Ergebnis
       "moment_first" 3D-Anfang → Zeitlupe → ganze Runde (Karte) → Ergebnis.
@@ -553,8 +614,13 @@ def frame_times(lap_time: float, replay_from: float | None,
     if order not in ORDERS:
         raise ValueError(f"order muss einer von {', '.join(ORDERS)} sein")
     opening = [] if open_from is None else [("open", open_from + i / FPS) for i in range(int(OPEN_S * FPS))]
-    n = int((LAP_S if replay_from is not None else LAP_S + REPLAY_S) * FPS)
+    if lap_s is None:
+        lap_s = LAP_S if replay_from is not None else LAP_S + REPLAY_S
+    n = int(lap_s * FPS)
     lap = [("lap", lap_time * i / (n - 1)) for i in range(n)]
+    # Kurz an der Ziellinie stehen bleiben – Kuala Lumpur 2026: Schnitt direkt aus
+    # voller Fahrt aufs Ergebnis wirkte, als ende die Runde vor dem Ziel
+    lap += [("lap", lap_time)] * int(FINISH_HOLD_S * FPS)
     replay = []
     if replay_from is not None:
         n = int(REPLAY_S * FPS)
@@ -623,12 +689,18 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
     else:
         hook = reel.get("hook") or ("Where pole was decided" if is_pole else "Head to head")
         result = reel.get("result") or f"{drv_a} {'on pole' if is_pole else 'ahead'} by {prep['gap']:.3f} s"
+    # opening = false: kein 3D-Anfang – die Karte bekommt dessen Zeit und läuft langsamer,
+    # der Haken steht in den ersten Sekunden oben über der Karte
+    with_opening = reel.get("opening", True)
+    if not isinstance(with_opening, bool):
+        raise ValueError("opening muss true oder false sein (klein geschrieben, ohne Anführungszeichen)")
     with_replay = reel.get("replay", True)
     if not isinstance(with_replay, bool):
         raise ValueError("replay muss true oder false sein (klein geschrieben, ohne Anführungszeichen)")
     rep_from = replay_from_config(prep, reel, lap_a) if with_replay else None
     rep_to = min(rep_from + REPLAY_WINDOW_S, lap_a) if with_replay else None
     open_from = open_from_config(reel, rep_from, prep, lap_a)
+    map_lap_s = None if with_opening else (LAP_S if with_replay else LAP_S + REPLAY_S) + OPEN_S
     from stintlab.reels.chase3d import Scene, draw_scene
     # 3D mit denselben aufbereiteten Positionen wie die Karte (kein Hänger, kein Jojo)
     scene_data = prep.get("scene_data") or {**data, "location": {**data.get("location", {}), **prep["clean_location"]}}
@@ -669,12 +741,15 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
         shots.append((scene, open_from + OPEN_S / 2))
     if replay_3d:
         shots.append((scene_r, rep_from + (rep_to - rep_from) / 2))
-    if shots:
+    from stintlab.reels.cover import cover_style
+    map_cover = cover_style(reel) == "map"
+    cover_args = dict(title=c_title, kicker="Ghost lap", sub=c_sub, meta=session_meta(data))
+    if shots and not map_cover:
         def spread(shot):
             sc, t = shot
             return float(np.linalg.norm(sc.pos(sc.a, t)[0] - sc.pos(sc.b, t)[0]))
         c_scene, c_t = min(shots, key=spread)
-        make_cover(reel, path, c_scene, c_t, c_title, kicker="Ghost lap", sub=c_sub, meta=session_meta(data))
+        make_cover(reel, path, c_scene, c_t, **cover_args)
 
     paint = reel.get("paint", True)
     if not isinstance(paint, bool):
@@ -750,6 +825,35 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
         seg_rgba = np.array([to_rgba(ca if w > 0 else cb, 0.3 + 0.7 * k) for w, k in zip(who, strength)])
     else:
         seg_rgba = np.zeros((len(seg_frac), 4))
+    if map_cover:
+        def track_background(axc):
+            """Streckenkarte, gefärbt nach dem schnelleren Fahrer – unter dem Titel."""
+            x, y = pts[:, 0], pts[:, 1]
+            w_px, h_px = 1080, 1920
+            box = (0.10, 0.215, 0.80, 0.36)                # zwischen Untertitel und Wortmarke (Profil-Ausschnitt)
+            sx = box[2] * w_px / (np.ptp(x) or 1)
+            sy = box[3] * h_px / (np.ptp(y) or 1)
+            k = min(sx, sy)
+            X = box[0] + box[2] / 2 + (x - (x.min() + x.max()) / 2) * k / w_px
+            Y = box[1] + box[3] / 2 + (y - (y.min() + y.max()) / 2) * k / h_px
+            P = np.column_stack([X, Y])
+            segs = np.stack([P[:-1], P[1:]], axis=1)
+            close = np.array([[P[-1], P[0]]])                # Lücke an der Ziellinie schließen
+            axc.add_collection(LineCollection(np.concatenate([segs, close]), linewidths=18, colors=COLORS["grid"],
+                                              capstyle="round"))
+            cols = seg_rgba if paint else np.array([to_rgba(COLORS["muted"], 0.8)] * len(segs))
+            cols = np.concatenate([cols, cols[-1:]])
+            # deckend machen (Farbe über dem Streckengrau gemischt): halbtransparente Stücke mit
+            # runden Enden überlappen sonst als Perlen, mit geraden Enden als Fransen in Kurven
+            under = np.array(to_rgba(COLORS["grid"]))
+            a_ = cols[:, 3:4]
+            cols = np.concatenate([cols[:, :3] * a_ + under[:3] * (1 - a_), np.ones_like(a_)], axis=1)
+            axc.add_collection(LineCollection(np.concatenate([segs, close]), linewidths=9, colors=cols,
+                                              capstyle="round"))
+            axc.scatter([X[0]], [Y[0]], s=160, color=COLORS["text"], zorder=5, edgecolor=COLORS["bg"], linewidth=2)
+            axc.text(box[0], box[1] + box[3] + 0.018, f"track colour = who was faster there",
+                     ha="left", va="center", fontsize=10, color=COLORS["muted"])
+        make_cover(reel, path, None, 0.0, background=track_background, **cover_args)
     # Vorjahresvergleich mit rekonstruierter Runde (OpenF1 ohne Rundendaten, z. B. Baku 2025): B hat keine
     # Sektorzeiten → compare() setzt keine sector_marks → vorher keine Chips/Balken. Dann gelten die
     # Sektorgrenzen von A (offizielle Zeiten dieser Session); B's Sektorwerte kommen dort nur aus dem
@@ -759,7 +863,7 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
         if tr_a.get("sectors") and all(tr_a["sectors"]) and "frac" in tr_a:
             res["sector_marks"] = [float(np.interp(x, tr_a["t"], tr_a["frac"])) for x in np.cumsum(tr_a["sectors"][:2])]
             print(f"  ℹ Sektorgrenzen aus {drv_a} ({drv_b} ohne offizielle Sektorzeiten) – Sektorwerte aus dem Abstandsverlauf")
-    gains = sector_gains(res) if paint else []
+    gains = sector_gains(res, prep["traces"]) if paint else []
     sector_end = list(res.get("sector_marks") or []) + [1.0]
     chips = []
     for i, g in enumerate(gains):
@@ -850,6 +954,8 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
     # ── 3D-Anfang ────────────────────────────────────────────────────────────
     ax_3d = fig.add_axes([0, 0, 1, 1], zorder=-1)
     hook_1, _, hook_2 = hook.partition(" – ")
+    # ohne 3D-Anfang: Haken die ersten HOOK_MAP_S Video-Sekunden über der Karte
+    hook_until = lap_a * HOOK_MAP_S / map_lap_s if map_lap_s else 0.0
     open_txt = [fig.text(0.5, 0.925, hook_1, ha="center", va="center", fontsize=30 if len(hook_1) < 28 else 24,
                          fontweight="bold", color=COLORS["text"]),
                 fig.text(0.5, 0.878, hook_2, ha="center", va="center", fontsize=30 if len(hook_2) < 28 else 24,
@@ -938,6 +1044,8 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
             txt_sub.set_text("no data here")
             return
         g = gap_at(prep, t)
+        txt_sub.set_fontsize(15)              # zurück nach dem Haken (opening = false)
+        txt_sub.set_color(COLORS["muted"])
         txt_big.set_text(f"{abs(g):.2f} s")
         txt_big.set_fontsize(40)
         txt_big.set_color(ca if g >= 0 else cb)
@@ -963,6 +1071,13 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
             visible(ax_map, ax_gap, txt_leg_a, txt_leg_b)
             place("map", t)
             running_gap(t)
+            if not with_opening and t < hook_until:     # Haken statt Abstand (der ist am Start ~0)
+                txt_big.set_text(hook_1)
+                txt_big.set_fontsize(26 if len(hook_1) < 30 else 22)
+                txt_big.set_color(COLORS["text"])
+                txt_sub.set_text(hook_2)
+                txt_sub.set_fontsize(26 if len(hook_2) < 30 else 22)
+                txt_sub.set_color(COLORS["text"])
             draw_gap(t, full=False)
             show_paint(frac_of(t))
             cursor.set_visible(False)
@@ -1036,7 +1151,8 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
                                     extra_args=["-pix_fmt", "yuv420p", "-crf", "20"])
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    frames = frame_times(lap_a, rep_from, open_from, reel.get("order", "classic"))
+    frames = frame_times(lap_a, rep_from, open_from if with_opening else None, reel.get("order", "classic"),
+                         lap_s=map_lap_s)
     if sector_view:                    # Ergebnis-Bilder bekommen ihren Fortschritt 0–1 statt der Rundenzeit
         n_res = sum(1 for ph, _ in frames if ph == "result")
         k = iter(range(n_res))

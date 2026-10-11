@@ -75,3 +75,12 @@ def test_missing_drivers_are_listed():
     data = {"laps": laps_for("LEC", 10, [105.0] * 6) + laps_for("ANT", 10, [105.0] * 3)}
     shown = best_run_per_driver(find_long_runs(data))
     assert missing_drivers(data, shown) == ["ANT"]
+
+def test_long_run_much_slower_than_quali_lap_is_found():
+    # Verstappen, Kuala Lumpur FP1: Bestzeit 97.5 s, Long Run um 105 s (+7.7 %)
+    laps = laps_for("VER", 3, [97.5], out_lap_before=True)
+    laps.append({"Driver": "VER", "LapNumber": 4, "LapTime": 125.0, "IsPitOutLap": False})
+    laps += laps_for("VER", 12, [104.9, 105.1, 105.2, 105.0, 104.8, 104.9, 105.1, 105.3, 194.8])
+    runs = find_long_runs({"laps": laps}, min_laps=5)
+    assert len(runs) == 1
+    assert len(runs[0]["laps"]) == 8
