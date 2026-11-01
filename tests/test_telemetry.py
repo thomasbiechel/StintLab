@@ -85,3 +85,20 @@ def test_gap_is_not_smeared_across_a_frozen_gap():
     before = res["frac"] < 0.28              # Sektor 1 vor der Lücke
     # B ist gleichmäßig langsamer → vor der Lücke wächst der Abstand nur langsam bis ~0,1 s
     assert np.nanmax(res["delta"][before]) < 0.15
+
+
+def test_channel_on_grid_interpolates_throttle_and_steps_brake_and_gear():
+    from stintlab.analyses.telemetry import channel_on_grid
+    lap = {"LapStart": START}
+    rows = [{"date": (START + timedelta(seconds=s)).isoformat(), "throttle": 10 * s,
+             "brake": 100 if 2 <= s < 4 else 0, "n_gear": 3 + int(s // 3)} for s in range(0, 8)]
+    times = np.array([0.0, 1.5, 2.5, 4.0, 6.5])
+    assert np.allclose(channel_on_grid(rows, lap, times, "throttle"), [0, 15, 25, 40, 65])   # linear
+    assert list(channel_on_grid(rows, lap, times, "brake")) == [0, 0, 100, 0, 0]              # Treppe
+    assert list(channel_on_grid(rows, lap, times, "gear")) == [3, 3, 3, 4, 5]
+
+
+def test_channel_on_grid_returns_none_when_channel_is_missing():
+    from stintlab.analyses.telemetry import channel_on_grid
+    rows = [{"date": (START + timedelta(seconds=s)).isoformat(), "speed": 200} for s in range(10)]
+    assert channel_on_grid(rows, {"LapStart": START}, np.array([1.0]), "gear") is None

@@ -200,6 +200,8 @@ def render_gain_loss(data: dict, reel: dict, path: Path) -> Path:
     prep = prepare(data, reel)
     _report(prep)
     a, b, bal, gol, scene = prep["a"], prep["b"], prep["bal"], prep["gol"], prep["scene"]
+    from stintlab.reels.blender_opener import attach_blender_opener    # opener = "blender" in der post.toml
+    attach_blender_opener(scene, reel, [prep["open_times"]], path, FPS)
     lap_lo, lap_hi = prep["laps"]
     teams = data.get("teams", {})
     cb = team_color(teams.get(b))

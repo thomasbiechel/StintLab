@@ -1,4 +1,4 @@
-"""Telemetrie-Vergleich: Geschwindigkeit und Zeitabstand über eine Runde.
+"""Telemetrie-Vergleich: Geschwindigkeit, Zeitabstand, Gas, Bremse und Gang über eine Runde.
 
 DATENQUELLE: OpenF1 car_data, etwa 3–4 Messpunkte pro Sekunde. Bei 300 km/h
 liegen zwischen zwei Punkten gut 20 m – Geschwindigkeitsverläufe sind
@@ -95,6 +95,35 @@ def lap_trace(car_data: list[dict], lap: dict, frozen: list | None = None) -> tu
     v = np.concatenate([[np.interp(0.0, t_all, v_all)], v_all[inside],
                         [np.interp(lap_time, t_all, v_all)]])
     return t, v
+
+
+# Weitere OpenF1-Kanäle neben der Geschwindigkeit: (Feld, Anzeige als Treppe?)
+CHANNELS = {"throttle": False, "brake": True, "gear": True}
+FIELDS = {"throttle": "throttle", "brake": "brake", "gear": "n_gear"}
+BRAKE_ON = 50   # OpenF1 liefert die Bremse als 0 oder 100
+
+
+def channel_on_grid(car_data: list[dict], lap: dict, times: np.ndarray, name: str) -> np.ndarray | None:
+    """Kanal (throttle / brake / gear) zu den Zeitpunkten `times` [s ab Rundenbeginn].
+
+    Gas wird linear interpoliert, Bremse und Gang als Treppe (letzter bekannter Wert) –
+    dazwischen gibt es keine Zwischenwerte. None, wenn der Kanal in den Daten fehlt.
+    """
+    field = FIELDS[name]
+    start = lap["LapStart"]
+    pts = []
+    for row in car_data:
+        when, val = _parse(row.get("date")), row.get(field)
+        if when is not None and val is not None:
+            pts.append(((when - start).total_seconds(), float(val)))
+    if len(pts) < 4:
+        return None
+    pts.sort()
+    t = np.array([p[0] for p in pts])
+    v = np.array([p[1] for p in pts])
+    if not CHANNELS[name]:
+        return np.interp(times, t, v)
+    return v[np.clip(np.searchsorted(t, times, side="right") - 1, 0, len(v) - 1)]
 
 
 def distance(t: np.ndarray, v_kmh: np.ndarray) -> np.ndarray:
@@ -199,6 +228,7 @@ def _driver_trace(data: dict, drv: str, lap: dict, refresh: bool = False) -> dic
     t, v = lap_trace(car_data, lap, frozen)
     sectors = [lap.get(k) for k in SECTORS]
     return {"t": t, "v": v, "lap_time": float(lap["LapTime"]), "frozen": frozen,
+            "car": car_data, "lap": lap,
             "sectors": [float(s) for s in sectors] if all(sectors) else None}
 
 
@@ -248,36 +278,94 @@ def render_telemetry(ax, data: dict, drivers: list[str] | None = None,
             res[key] = np.where(hole, np.nan, res[key])
             res["delta"] = np.where(hole, np.nan, res["delta"])
 
-    # Zwei Bereiche: oben Geschwindigkeit, unten Abstand
+    # Zusatzkanäle auf dasselbe Streckenraster legen (Zeit je Distanzpunkt steht in res["time_*"])
+    chans = {}
+    for name in CHANNELS:
+        pair = [channel_on_grid(tr["car"], tr["lap"], res[f"time_{k}"], name) for k, tr in (("a", a), ("b", b))]
+        if all(p is not None for p in pair):
+            chans[name] = pair
+    for key_i, tr in enumerate((a, b)):          # in Datenlücken auch hier nichts erfinden
+        for t0, t1 in tr["frozen"]:
+            f0, f1 = (float(np.interp(x, tr["t"], tr["frac"])) for x in (t0, t1))
+            hole = (res["frac"] > f0) & (res["frac"] < f1)
+            for pair in chans.values():
+                pair[key_i] = np.where(hole, np.nan, pair[key_i])
+
+    # Bereiche von oben nach unten: Geschwindigkeit, Abstand, Gas, Bremse, Gang (relative Höhen)
+    layout = [("speed", 0.40), ("gap", 0.17)]
+    layout += [(n, hgt) for n, hgt in (("throttle", 0.15), ("brake", 0.07), ("gear", 0.12)) if n in chans]
+    gap_h = 0.022
+    total = sum(hgt for _, hgt in layout) + gap_h * (len(layout) - 1)
     fig = ax.figure
     x, y, w, h = ax.get_position().bounds
-    ax.set_position([x, y + h * 0.34, w, h * 0.66])
-    ax_d = fig.add_axes([x, y, w, h * 0.26], sharex=ax)
-    ax_d.set_facecolor(ax.get_facecolor())
-    for a_ in (ax, ax_d):
+    axes, top_edge = {}, y + h
+    for n, hgt in layout:
+        height = h * hgt / total
+        top_edge -= height
+        if n == "speed":
+            axes[n] = ax
+            ax.set_position([x, top_edge, w, height])
+        else:
+            axes[n] = fig.add_axes([x, top_edge, w, height], sharex=ax)
+            axes[n].set_facecolor(ax.get_facecolor())
+        top_edge -= h * gap_h / total
+    ax_d = axes["gap"]
+    last = axes[layout[-1][0]]
+    for a_ in axes.values():
         style_axes(a_, grid_axis="both")
+        if a_ is not last:
+            a_.tick_params(labelbottom=False)
 
+    ls_b = "--" if same_team else "-"
     ax.plot(km, res["speed_a"], color=ca, linewidth=1.4,
             label=f"{drivers[0]}  {_fmt(a['lap_time'])}")
-    ax.plot(km, res["speed_b"], color=cb, linewidth=1.4, linestyle="--" if same_team else "-",
+    ax.plot(km, res["speed_b"], color=cb, linewidth=1.4, linestyle=ls_b,
             label=f"{drivers[1]}  {_fmt(b['lap_time'])}")
     ax.set_ylabel("Speed (km/h)")
     ax.legend(loc="lower left", fontsize=8, frameon=False, labelcolor=COLORS["text"])
-    ax.tick_params(labelbottom=False)
 
     ax_d.axhline(0, color=COLORS["muted"], linewidth=0.8)
     ax_d.plot(km, res["delta"], color=COLORS["text"], linewidth=1.2)
     ok = ~np.isnan(res["delta"])
     ax_d.fill_between(km, res["delta"], 0, where=ok & (res["delta"] >= 0), color=ca, alpha=0.35, linewidth=0)
     ax_d.fill_between(km, res["delta"], 0, where=ok & (res["delta"] < 0), color=cb, alpha=0.35, linewidth=0)
-    ax_d.set_ylabel(f"Gap (s) · ▲ {drivers[0]} ahead", fontsize=7.5, labelpad=2)
-    ax_d.set_xlabel("Lap distance (km)")
+    ax_d.set_ylabel("Gap (s)", fontsize=7.5)
+    ax_d.text(0.01, 0.94, f"▲ {drivers[0]} ahead", transform=ax_d.transAxes, ha="left", va="top", fontsize=7,
+              color=COLORS["muted"], bbox={"facecolor": COLORS["bg"], "alpha": 0.8, "pad": 1.5, "linewidth": 0})
     ax_d.set_xlim(0, km[-1])
+
+    if "throttle" in chans:
+        axt = axes["throttle"]
+        axt.plot(km, chans["throttle"][0], color=ca, linewidth=1.0)
+        axt.plot(km, chans["throttle"][1], color=cb, linewidth=1.0, linestyle=ls_b)
+        axt.set_ylim(-5, 105)
+        axt.set_yticks([0, 100])
+        axt.set_ylabel("Throttle", fontsize=7.5)
+    if "brake" in chans:
+        axb = axes["brake"]
+        axb.grid(False)
+        for row, (col, vals) in enumerate(zip((ca, cb), chans["brake"])):
+            yb = 1 - row            # A oben, B unten
+            on = np.nan_to_num(vals, nan=0.0) >= BRAKE_ON
+            axb.fill_between(km, yb, yb + 0.8, where=on, color=col, alpha=0.9, linewidth=0, step="mid")
+        axb.set_ylim(-0.1, 1.9)
+        axb.set_yticks([])
+        axb.set_ylabel("Brake", fontsize=7.5)
+    if "gear" in chans:
+        axg = axes["gear"]
+        axg.step(km, chans["gear"][0], where="mid", color=ca, linewidth=1.0)
+        axg.step(km, chans["gear"][1], where="mid", color=cb, linewidth=1.0, linestyle=ls_b)
+        axg.set_ylim(0.5, 8.5)
+        axg.set_yticks([2, 4, 6, 8])
+        axg.set_ylabel("Gear", fontsize=7.5)
+    for a_ in axes.values():
+        a_.yaxis.set_label_coords(-0.095, 0.5)
+    last.set_xlabel("Lap distance (km) · ~4 Hz, braking points approximate")
 
     # Sektorgrenzen und Sektorabstände
     bounds = [0.0] + [m * res["length_m"] / 1000 for m in res["sector_marks"]] + [km[-1]]
     for bx in bounds[1:-1]:
-        for a_ in (ax, ax_d):
+        for a_ in axes.values():
             a_.axvline(bx, color=COLORS["grid"], linewidth=1, linestyle=":")
     if a["sectors"] and b["sectors"]:
         top = ax.get_ylim()[1]
@@ -293,13 +381,11 @@ def render_telemetry(ax, data: dict, drivers: list[str] | None = None,
         frac_t = tr["frac"]
         for t0, t1 in tr["frozen"]:
             k0, k1 = (float(np.interp(x, tr["t"], frac_t)) * res["length_m"] / 1000 for x in (t0, t1))
-            for a_ in (ax, ax_d):
+            for a_ in axes.values():
                 a_.axvspan(k0, k1, facecolor="none", edgecolor=COLORS["muted"], hatch="///", linewidth=0,
                            alpha=0.5, zorder=0)
             notes.append(f"{d} no speed data {k0:.1f}–{k1:.1f} km")
     if notes:
         ax.text(0.99, 0.02, " · ".join(notes), transform=ax.transAxes, ha="right", va="bottom",
                 fontsize=7, color=COLORS["muted"])
-    ax_d.text(0.99, 0.04, "OpenF1 car data · ~4 Hz · braking points approximate",
-              transform=ax_d.transAxes, ha="right", va="bottom", fontsize=7, color=COLORS["muted"])
     return res

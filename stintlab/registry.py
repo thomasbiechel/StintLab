@@ -35,6 +35,7 @@ from stintlab.analyses.teammate_duel import render_teammate_duel
 from stintlab.analyses.starts import render_best_starters
 from stintlab.analyses.sat_sun import render_saturday_sunday
 from stintlab.analyses.tow_effect import render_tow_effect, render_tow_split
+from stintlab.analyses.vsc_stop import render_vsc_pace, render_vsc_stop
 
 
 def _gap_between(ax, data, slide):
@@ -227,6 +228,23 @@ def _teammate_duel(ax, data, slide):
     render_teammate_duel(ax, season_sessions(data["meeting_key"], "Q"))
 
 
+def _vsc_stop(ax, data, slide):
+    drivers, refs, stop_lap = slide.get("drivers", []), slide.get("refs", []), slide.get("stop_lap")
+    if len(drivers) != 1 or not refs or not isinstance(stop_lap, int):
+        raise ValueError('vsc_stop braucht drivers = ["HAM"], refs = ["LEC", "ANT"] (Fahrer, die dort '
+                         'wirklich gestoppt haben) und stop_lap = 39')
+    extras = tuple(slide.get("extras", (0.0, 0.3, 0.6)))
+    render_vsc_stop(ax, data, drivers[0], refs, stop_lap, extras)
+
+
+def _vsc_pace(ax, data, slide):
+    drivers, laps = slide.get("drivers", []), _laps_window(slide)
+    if not drivers or not laps:
+        raise ValueError('vsc_pace braucht drivers = ["HAM", "LEC", ...] (erster = Hauptfahrer) '
+                         "und laps = [erste, letzte], z. B. laps = [41, 62]")
+    render_vsc_pace(ax, data, drivers, *laps)
+
+
 ANALYSES = {
     "podium": {"render": _podium, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "gap_between": {"render": _gap_between, "sessions": {"R", "S"}},
@@ -252,6 +270,8 @@ ANALYSES = {
     "speed_trend": {"render": _speed_trend, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "speed_vs_sector": {"render": _speed_vs_sector, "sessions": {"FP1", "FP2", "FP3", "Q", "SQ", "R", "S"}},
     "team_pace": {"render": _team_pace, "sessions": {"R", "S"}},
+    "vsc_stop": {"render": _vsc_stop, "sessions": {"R", "S"}},
+    "vsc_pace": {"render": _vsc_pace, "sessions": {"R", "S"}},
     # Race Preview (Donnerstag) – Daten aus stintlab.preview, keine einzelne Session
     "preview_track": {"render": lambda ax, data, slide: render_track(ax, data), "sessions": {"PREVIEW"}},
     "preview_weather": {"render": lambda ax, data, slide: render_weather(ax, data), "sessions": {"PREVIEW"},

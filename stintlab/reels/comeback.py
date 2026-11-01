@@ -438,6 +438,8 @@ def render_comeback(data: dict, reel: dict, path: Path) -> Path:
     prep = prepare(data, reel)
     _report(prep)
     drv, rival, scene = prep["drv"], prep["rival"], prep["scene"]
+    from stintlab.reels.blender_opener import attach_blender_opener    # opener = "blender" in der post.toml
+    attach_blender_opener(scene, reel, [prep[f"{k}_times"] for k in ("hook", "pass", "finish", "result")], path, FPS)
     mine, pos, events, laps = prep["mine"], prep["pos"], prep["events"], prep["laps"]
     last_lap, lap = prep["last_lap"], prep["lap"]
     col = scene.col[drv]

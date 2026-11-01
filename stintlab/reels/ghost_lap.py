@@ -535,6 +535,23 @@ def colors_too_close(c1: str, c2: str) -> bool:
     return float(np.linalg.norm(np.subtract(to_rgb(c1), to_rgb(c2)))) < COLOR_MIN_DIST
 
 
+def sector_anchored(res: dict) -> dict:
+    """Abstandsverlauf nur durch die OFFIZIELLEN Sektorzeiten: gerade Linien zwischen
+    Start, den beiden Sektorgrenzen und dem Ziel.
+
+    Zwischen den Sektorgrenzen ist der Abstand aus der 4-Hz-Geschwindigkeit integriert
+    und kann um Zehntelsekunden springen; bei knappen Abständen (< 0,05 s) würde so eine
+    Messspitze die Aussage des Reels kippen.
+    """
+    marks = list(res.get("sector_marks") or [])
+    if len(marks) != 2:
+        raise ValueError('gap = "sectors" braucht Sektorzeiten beider Fahrer (keine Sektorgrenzen gefunden)')
+    frac, delta = np.asarray(res["frac"], float), np.asarray(res["delta"], float)
+    xs = [float(frac[0])] + [float(m) for m in marks] + [float(frac[-1])]
+    ys = [float(np.interp(x, frac, delta)) for x in xs]
+    return {**res, "delta": np.interp(frac, xs, ys)}
+
+
 def gap_at(prep: dict, t: float) -> float:
     """Laufender Abstand (> 0 = A vorne) zur Rundenzeit t von A."""
     at, afrac = prep["a_frac"]
@@ -675,12 +692,18 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
             print(f"  ⚠ {msg}")
     else:
         prep = prepare(data, reel.get("drivers") or None, reel.get("part"))
+    gap_mode = reel.get("gap", "telemetry")
+    if gap_mode not in ("telemetry", "sectors"):
+        raise ValueError('gap muss "telemetry" oder "sectors" sein')
+    if gap_mode == "sectors":
+        prep["res"] = sector_anchored(prep["res"])
     drv_a, drv_b = prep["drivers"]
     ca, cb = (team_color(t) for t in prep["teams"])
     same_team = prep["teams"][0] == prep["teams"][1]
     lap_a = prep["traces"][0]["lap_time"]
     t_a, t_b = (_fmt(tr["lap_time"]) for tr in prep["traces"])
     is_pole = reel.get("part") == "Q3"
+    nd = 3     # Nachkommastellen aller Abstände im Reel: immer Tausendstel (0,009 s, nicht 0,01 s)
     if prep.get("compare"):
         ya, yb = prep["years"]
         word = "faster" if prep["gap"] > 0 else "slower"
@@ -726,6 +749,21 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
                             t0s={d: lap["LapStart"] for d, lap in zip(prep["drivers"], prep["laps"])}, ref=drv_a)
             scene_r.configure(reel)
             scene_r.ghost = drv_b
+
+    # opener = "blender": 3D-Anfang UND Zeitlupe mit Blender. Zeitlupe als eigene Szene (Kopie), weil sich ihre
+    # Zeiten mit denen des Anfangs überlappen (Anfang beginnt 0,5 s vor der Zeitlupe) – sonst nähme draw_scene
+    # für die ersten Sekunden der Zeitlupe die falschen Bilder.
+    from stintlab.reels.blender_opener import attach_blender_opener
+    if open_from is not None:
+        attach_blender_opener(scene, reel, [open_from + np.arange(int(OPEN_S * FPS)) / FPS], path, FPS)
+    if replay_3d:
+        if scene_r is scene:
+            import copy
+            scene_r = copy.copy(scene)
+            scene_r.blender = None
+        n_rep = int(REPLAY_S * FPS)
+        attach_blender_opener(scene_r, reel, [rep_from + (rep_to - rep_from) * np.arange(n_rep) / (n_rep - 1)],
+                              Path(path).with_name(Path(path).stem + "_replay.mp4"), FPS)
 
     # Titelbild: die Szene, in der beide Autos am nächsten beieinander sind (3D-Anfang oder Mitte
     # der Zeitlupe) – bei 1 s Abstand wäre das andere Auto sonst nur ein Punkt am Horizont
@@ -868,7 +906,7 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
     chips = []
     for i, g in enumerate(gains):
         winner = drv_a if g >= 0 else drv_b
-        chips.append(fig.text(0.2 + 0.3 * i, 0.80, f"S{i + 1}  {winner} +{abs(g):.2f}", ha="center",
+        chips.append(fig.text(0.2 + 0.3 * i, 0.80, f"S{i + 1}  {winner} +{abs(g):.{nd}f}", ha="center",
                               va="center", fontsize=14, fontweight="bold", color=ca if g >= 0 else cb,
                               path_effects=[patheffects.withStroke(linewidth=3, foreground="black", alpha=0.7)]))
     paint_hint = fig.text(0.5, 0.772, "track colour = who was faster there" if paint else "", ha="center",
@@ -908,7 +946,7 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
     if prep.get("compare"):
         default_q = f"Which lap was better – '{str(prep['years'][0])[2:]} or '{str(prep['years'][1])[2:]}?"
     else:
-        default_q = f"Where could {drv_b} have found {abs(prep['gap']):.2f} s?"
+        default_q = f"Where could {drv_b} have found {abs(prep['gap']):.{nd}f} s?"
     question = reel.get("question", default_q)
     if not isinstance(question, str):
         raise ValueError('question muss ein Text sein, z. B. question = "Who had the better lap?" (oder "" = keine Frage)')
@@ -926,13 +964,13 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
             h = min(max(grow * 3 - i, 0.0), 1.0)
             h = h * h * (3 - 2 * h)
             bar.set_height(g * h)
-            sec_vals[i].set_text(f"+{abs(g):.2f}" if h > 0.95 else "")
+            sec_vals[i].set_text(f"+{abs(g):.{nd}f}" if h > 0.95 else "")
             off = sec_top * 0.06
             sec_vals[i].set_position((i, g + off if g >= 0 else g - off))
             sec_vals[i].set_va("bottom" if g >= 0 else "top")
         done = grow >= 1.0
-        sum_txt[0].set_text(f"{drv_a} +{sum_a:.2f} s in {' + '.join(won_a)}" if done and won_a else "")
-        sum_txt[1].set_text(f"{drv_b} +{sum_b:.2f} s in {' + '.join(won_b)}" if done and won_b else "")
+        sum_txt[0].set_text(f"{drv_a} +{sum_a:.{nd}f} s in {' + '.join(won_a)}" if done and won_a else "")
+        sum_txt[1].set_text(f"{drv_b} +{sum_b:.{nd}f} s in {' + '.join(won_b)}" if done and won_b else "")
 
     def show_paint(frac_now: float | None) -> None:
         """Färbung bis frac_now (None = ganze Runde), Chips der fertigen Sektoren mit kurzem „Pop“."""
@@ -1046,7 +1084,7 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
         g = gap_at(prep, t)
         txt_sub.set_fontsize(15)              # zurück nach dem Haken (opening = false)
         txt_sub.set_color(COLORS["muted"])
-        txt_big.set_text(f"{abs(g):.2f} s")
+        txt_big.set_text(f"{abs(g):.{nd}f} s")
         txt_big.set_fontsize(40)
         txt_big.set_color(ca if g >= 0 else cb)
         txt_sub.set_text(f"{drv_a if g >= 0 else drv_b} ahead")
@@ -1061,7 +1099,7 @@ def render_ghost_lap(data: dict, reel: dict, path: Path) -> Path:
             draw_scene(ax_3d, scene, t)
             minimap.update(t)
             g = gap_at(prep, t)      # Abstand aus der Telemetrie, wie im Rest des Reels
-            open_gap.set_text(f"{abs(g):.2f} s")
+            open_gap.set_text(f"{abs(g):.{nd}f} s")
             # Wer vorne liegt, wechselt in der Runde – der Text muss mitgehen
             ahead, behind = (drv_a, drv_b) if g >= 0 else (drv_b, drv_a)
             open_gap.set_color(ca if g >= 0 else cb)

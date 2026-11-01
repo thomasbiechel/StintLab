@@ -1,0 +1,39 @@
+# Reels Mexico City 2026 · qualifying – angelegt von weekend.py
+# hook: Zeile 1 – Zeile 2 (wird am „ – “ geteilt). open_at = Stelle des 3D-Anfangs (siehe Reel-Doku)
+[session]
+meeting_key = 1298
+type = "Q"
+
+[[reels]]
+opener = "blender"
+opener_quality = "final"   
+analysis = "ghost_lap"
+part = "Q3"
+#gap      = "sectors"   # glättet auch die Kartenfärbung (nur Sektoren) – für dieses Reel aus
+hook     = "Pole by 0.009 s – 0.025 s up after Sector 1"
+result   = "Hamilton on pole by 0.009 s"
+replay_start = 72.5
+open_at      = 25.5   # 3D-Anfang an der S1/S2-Grenze (HAM +0.025 s), nicht noch einmal am Ziel
+replay_note  = "0.009 s at the line ≈ 0.7 m at 270 km/h"
+# Titelbild (reel_XX_..._cover.png) – Standardtexte aus den Daten, zum Ändern einkommentieren:
+# [reels.cover]
+# title  = "..."
+# kicker = "..."
+# sub    = "..."
+
+# Pole 2026 vs. Pole 2025 (NOR) – gleiche Strecke,
+# Vorjahr automatisch gefunden · Wetter 2025: Luft 26–26 °C · Strecke 42–50 °C · Wind bis 4.0 m/s · Regen: nein
+#[[reels]]
+#opener = "blender"
+#opener_quality = "final"   
+#analysis = "ghost_lap"
+#part     = "Q3"
+#compare  = { meeting_key = 1272 }
+#open_at  = 0          # 3D-Anfang am Start der Runde (Vorjahr als halbtransparenter Geist)
+# replay_km   = 5.2   # Zeitlupe an eine Stelle legen (Standard: größte Abstandsänderung)
+# replay_note = "..."  # eine Zeile Erklärung in der Zeitlupe
+# Titelbild (reel_XX_..._cover.png) – Standardtexte aus den Daten, zum Ändern einkommentieren:
+# [reels.cover]
+# title  = "..."
+# kicker = "..."
+# sub    = "..."

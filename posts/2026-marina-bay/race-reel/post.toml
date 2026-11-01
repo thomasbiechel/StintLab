@@ -5,11 +5,7 @@ meeting_key = 1296
 type = "R"
 
 [[reels]]
-analysis = "race_story"
-hook     = "Verstappen's race – how it was decided"   # TODO schärfen
-result   = "Verstappen wins by 7.335 s"
-# Titelbild (reel_XX_..._cover.png) – Standardtexte aus den Daten, zum Ändern einkommentieren:
-# [reels.cover]
-# title  = "..."
-# kicker = "..."
-# sub    = "..."
+analysis = "comeback"
+drivers  = ["HAD"]
+order    = "moment_first"
+# pass = { lap = ?, rival = "?", side = "left" }   # erst nach dem ersten Lauf prüfen

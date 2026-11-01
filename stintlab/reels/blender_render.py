@@ -55,6 +55,7 @@ from mathutils import Euler, Matrix, Vector
 
 PREVIEW_SAMPLES = 32
 FOV_V = 46.0                 # enger als das alte Bild (61°): die Autos füllen mehr vom Hochformat
+GHOST_ALPHA = 0.7            # Deckkraft des „Geist“-Autos (Vorjahr / Vergleichsfahrer): 1.0 = ganz fest, 0.45 war sehr durchsichtig
 PLACEHOLDER_SCALE = 1.25     # etwas größer als echt – im Hochformat wirken Autos sonst klein
 warnings.filterwarnings("ignore", message=".*use_nodes.*", category=DeprecationWarning)   # nur Hinweis auf Blender 6.0
 
@@ -132,6 +133,10 @@ def solid_material(name: str, color, roughness=0.5, metallic=0.0, emission=0.0, 
             a.default_value = alpha
         set_safe(m, "surface_render_method", "BLENDED")
         set_safe(m, "blend_method", "BLEND")
+        # Nur die vorderste Fläche zeichnen: sonst scheinen Innenteile (Räder, Boden, Rückseiten) durch
+        # und das Auto wirkt matschig/„geistig“ statt wie ein halbtransparentes festes Auto
+        set_safe(m, "use_transparency_overlap", False)
+        set_safe(m, "show_transparent_back", False)
     return m
 
 
@@ -902,7 +907,7 @@ def _wheel(name, x, y, radius, width, mat, parent, bevel=0.03):
 def build_placeholder_car(name: str, color, ghost: bool, parent):
     """F1-Auto aus abgerundeten Formen, ca. 5,5 m lang, Nase nach +x, Boden bei z = 0. Von hinten gesehen
     (die Kamera sitzt dort) tragen Heckflügel, Räder, Halo und Rücklicht das Bild."""
-    al = 0.45 if ghost else 1.0
+    al = GHOST_ALPHA if ghost else 1.0
     body = solid_material(f"{name} Lack", color, 0.25, 0.25, alpha=al, specular=0.5)
     carbon = solid_material(f"{name} Carbon", (0.045, 0.045, 0.05), 0.35, 0.15, alpha=al, specular=0.4)
     rubber = solid_material(f"{name} Reifen", (0.05, 0.05, 0.056), 0.7, alpha=al, specular=0.4)
@@ -1153,7 +1158,7 @@ def build_model_cars(d: dict, path: Path, decimate: float, rebuild: bool, yaw: f
         link(pivot)
         pivot.parent = empty
         pivot.rotation_euler = (0, 0, math.radians(yaw))
-        al = 0.45 if meta.get("ghost") == drv else 1.0
+        al = GHOST_ALPHA if meta.get("ghost") == drv else 1.0
         mats = {
             "paint": solid_material(f"{drv} Lack", meta["colors"][drv], 0.25, 0.25, alpha=al, specular=0.5),
             "carbon": solid_material(f"{drv} Carbon", (0.045, 0.045, 0.05), 0.35, 0.15, alpha=al, specular=0.4),

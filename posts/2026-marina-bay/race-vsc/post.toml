@@ -1,0 +1,28 @@
+# Deep Dive Marina Bay 2026 · Rennen: Warum hat Ferrari Hamilton nicht unter der VSC reingeholt?
+# Leitfrage: LEC und ANT stoppten in Runde 39 unter VSC, HAM blieb draußen (P2 auf der Strecke → P6).
+# Slide 3 ist ein Modell, keine Messung: Methode und Grenzen stehen in stintlab/analyses/vsc_stop.py.
+[session]
+meeting_key = 1296
+type = "R"
+
+[[slides]]
+analysis = "positions"
+drivers  = ["HAM", "LEC", "ANT", "NOR", "PIA"]
+laps     = [36, 62]
+title    = "HAMILTON STAYED OUT. LECLERC DIDN'T."
+subtitle = "VSC in lap 39: LEC and ANT pit for softs · HAM runs P2 on the road, then drops to P6"
+
+[[slides]]
+analysis = "vsc_pace"
+drivers  = ["HAM", "LEC", "ANT", "NOR"]
+laps     = [41, 62]
+title    = "OLD SOFTS COST 2 S A LAP"
+subtitle = "HAM's median gap to LEC: +0.2 s per lap before the VSC, +2.0 s in laps 41–52, +3.0 s in laps 53–62"
+
+[[slides]]
+analysis = "vsc_stop"
+drivers  = ["HAM"]
+refs     = ["LEC", "ANT"]
+stop_lap = 39
+title    = "STOPPING UNDER THE VSC: P3 TO P5, NOT P6"
+subtitle = "Simulation: HAM pits in lap 39 like LEC and ANT. Worst case: stuck behind NOR all race. The same method is 1.5 s off on ANT's real finish."

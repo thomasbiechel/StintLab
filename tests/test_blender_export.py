@@ -142,6 +142,16 @@ def test_retime_smooths_the_speed_but_keeps_the_path():
     assert retime_xy(xy[:3], 20).shape == (3, 2)                         # zu kurz: unverändert
 
 
+def test_explicit_times_support_slow_motion(scene):
+    t0, _ = _window(scene, 1.0)
+    times = t0 + np.cumsum(np.full(30, 0.4 / 30))                 # Zeitlupe: Bildtakt 0,4/30 s Szenenzeit
+    d = scene_to_dict(scene, 0.0, 0.0, fps=30, times=times)
+    assert len(d["frames"]["t"]) == 30
+    assert d["frames"]["t"] == pytest.approx(list(times), abs=1e-3)
+    assert d["meta"]["t_start"] == pytest.approx(times[0]) and d["meta"]["t_end"] == pytest.approx(times[-1])
+    assert len(d["frames"]["camera"]["pos"]) == 30
+
+
 def test_classic_camera_is_still_available(scene):
     t0, t1 = _window(scene, 1.0)
     d = scene_to_dict(scene, t0, t1, fps=10, cam_mode="classic")

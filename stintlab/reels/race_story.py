@@ -366,6 +366,8 @@ def render_race_story(data: dict, reel: dict, path: Path) -> Path:
     prep = prepare(data, reel)
     a, b, x, y = prep["a"], prep["b"], prep["x"], prep["y"]
     _report(prep)
+    from stintlab.reels.blender_opener import attach_blender_opener    # opener = "blender" in der post.toml
+    attach_blender_opener(prep["scene"], reel, [prep["open_times"]], path, FPS)
     ta, tb, scale = prep["ta"], prep["tb"], prep["scale"]
     teams = data.get("teams", {})
     ca, cb = team_color(teams.get(a)), team_color(teams.get(b))

@@ -1,0 +1,23 @@
+# Mexico City Grand Prix 2026 · Mexico City · FP3 – angelegt von weekend.py
+# Titel mit TODO selbst formulieren, dann: python weekend.py <ort> FP3
+[session]
+meeting_key = 1298
+type = "FP3"
+
+[[slides]]
+analysis = "results"
+title    = "NORRIS FASTEST IN FP3"
+subtitle = "Official classification · tyre = compound of each driver's fastest lap"
+
+[[slides]]
+analysis = "ideal_lap"
+view = "ideal"
+compound = "SOFT"
+title    = "TITLE TODO"   # TODO
+subtitle = "Best FP3 sectors on Softs added up · ▲▼ = places gained vs. best lap · fuel loads unknown"
+
+[[slides]]
+analysis = "sectors"
+compound = "SOFT"
+title    = "TITLE TODO"   # TODO
+subtitle = "Each driver's best valid FP3 sector time on Softs"

@@ -237,13 +237,20 @@ def _path_camera(scene: Scene, n: int, pre: int, xy_ext: np.ndarray, fps: int, z
 
 
 def _frames(scene: Scene, t_start: float, t_end: float, fps: int, z_exag: float, cam_mode: str = "path",
-            back: float = CAM_BACK, height: float = CAM_HEIGHT, ahead: float = CAM_AHEAD) -> dict:
-    n = int(round((t_end - t_start) * fps))
+            back: float = CAM_BACK, height: float = CAM_HEIGHT, ahead: float = CAM_AHEAD,
+            times: np.ndarray | None = None) -> dict:
+    """times: eigene Zeitpunkte je Bild (Zeitlupe!) statt gleichmäßig t_start … t_end."""
+    if times is not None:
+        ts = np.asarray(times, dtype=float)
+        n = len(ts)
+    else:
+        n = int(round((t_end - t_start) * fps))
+        ts = t_start + np.arange(n) / fps
     if n < 2:
         raise ValueError("Zeitraum zu kurz: mindestens 2 Bilder")
-    ts = t_start + np.arange(n) / fps
     pre, post = (int(round(PATH_PRE_S * fps)), int(round(PATH_POST_S * fps))) if cam_mode == "path" else (0, 0)
-    t_ext = np.concatenate([ts[0] - np.arange(pre, 0, -1) / fps, ts, ts[-1] + np.arange(1, post + 1) / fps])
+    d0, d1 = (ts[1] - ts[0], ts[-1] - ts[-2]) if times is not None else (1.0 / fps, 1.0 / fps)
+    t_ext = np.concatenate([ts[0] - np.arange(pre, 0, -1) * d0, ts, ts[-1] + np.arange(1, post + 1) * d1])
     car = {}
     xy_ext = {}
     for d in (scene.a, scene.b):
@@ -295,11 +302,12 @@ def _frames(scene: Scene, t_start: float, t_end: float, fps: int, z_exag: float,
 
 def scene_to_dict(scene: Scene, t_start: float, t_end: float, fps: int = 60, z_exag: float = 1.0,
                   cam_back: float = CAM_BACK, cam_height: float = CAM_HEIGHT,
-                  cam_ahead: float = CAM_AHEAD, cam_mode: str = "path") -> dict:
-    """Szene im Zeitraum [t_start, t_end) (Sekunden ab t0 wie in chase3d) als Wörterbuch."""
+                  cam_ahead: float = CAM_AHEAD, cam_mode: str = "path", times: np.ndarray | None = None) -> dict:
+    """Szene im Zeitraum [t_start, t_end) (Sekunden ab t0 wie in chase3d) als Wörterbuch.
+    times: eigene Zeitpunkte je Bild (z. B. Zeitlupe) – dann gelten t_start/t_end nicht."""
     fov_h, fov_v = fov_degrees()
     with camera_rig(cam_back, cam_height, cam_ahead):
-        frames = _frames(scene, t_start, t_end, fps, z_exag, cam_mode, cam_back, cam_height, cam_ahead)
+        frames = _frames(scene, t_start, t_end, fps, z_exag, cam_mode, cam_back, cam_height, cam_ahead, times)
     return {
         "schema": SCHEMA,
         "meta": {
@@ -310,7 +318,8 @@ def scene_to_dict(scene: Scene, t_start: float, t_end: float, fps: int = 60, z_e
             "colors": {d: str(scene.col[d]) for d in (scene.a, scene.b)},
             "light": scene.light, "scenery": scene.scenery, "rain": bool(scene.rain),
             "pass_t": scene.pass_t, "pass_side": scene.pass_side,
-            "t_start": float(t_start), "t_end": float(t_end),
+            "t_start": float(t_start if times is None else times[0]),
+            "t_end": float(t_end if times is None else times[-1]),
             "camera_rig": {"back_m": cam_back, "height_m": cam_height, "ahead_m": cam_ahead},
             "camera_mode": cam_mode,
         },

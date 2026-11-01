@@ -1,0 +1,22 @@
+# Mexico City Grand Prix 2026 · Mexico City · FP2 – angelegt von weekend.py
+# Titel mit TODO selbst formulieren, dann: python weekend.py <ort> FP2
+[session]
+meeting_key = 1298
+type = "FP2"
+
+[[slides]]
+analysis = "results"
+title    = "LECLERC FASTEST IN FP2"
+subtitle = "Official classification · tyre = compound of each driver's fastest lap"
+
+[[slides]]
+analysis = "ideal_lap"
+view = "ideal"
+compound = "SOFT"
+title    = "TITLE TODO"   # TODO
+subtitle = "Best FP2 sectors on Softs added up · ▲▼ = places vs. best lap · fuel loads unknown"
+
+[[slides]]
+analysis = "long_runs"
+title    = "TITLE TODO"   # TODO
+subtitle = "Median lap time of each driver's longest FP2 run on Softs · fuel loads unknown"

@@ -36,7 +36,7 @@ SLIDES = {
            ("ideal_lap", {"view": "both"}, "todo", "Each driver's best sectors added up vs. the fastest lap")],
     "Q": [("podium", {}, "pole", "Qualifying · top three in Q3"),
           ("results", {}, "classification", "Official qualifying classification · fastest time in each part in purple"),
-          ("telemetry", {"part": "Q3"}, "telemetry", "Fastest Q3 laps of the top two · speed and gap over the lap"),
+          ("telemetry", {"part": "Q3"}, "telemetry", "Fastest Q3 laps of the top two · speed, gap, throttle, brake and gear"),
           ("ideal_lap", {"part": "Q3", "view": "both"}, "todo", "Each Q3 driver's best sectors added up vs. the pole lap"),
           ("sectors", {"part": "Q3"}, "todo", "Each Q3 driver's best valid sector time")],
     "S": [("podium", {}, "win", "Sprint · top three at the flag"),
@@ -76,8 +76,12 @@ def headline_facts(results: list[dict], names: dict[str, str]) -> dict:
 
 
 def _short(gap: float) -> str:
-    """0.837 → „0.8“, aber 0.060 → „0.06“ (sonst stünde „0.1“ für 0,06 s im Titel)."""
-    return f"{gap:.1f}" if gap >= 0.1 else f"{gap:.2f}"
+    """0.837 → „0.8“, 0.060 → „0.06“, 0.009 → „0.009“ – so wenige Stellen wie möglich, aber nie
+    eine Rundung, die den Abstand um 10 % oder mehr verfälscht (Mexiko-Stadt 2026 Quali: 0,009 s
+    stand als „0.01“ im Titel, während das Podium „0.009“ zeigte)."""
+    if gap >= 0.1:
+        return f"{gap:.1f}"
+    return f"{gap:.2f}" if gap >= 0.02 else f"{gap:.3f}"
 
 
 def slide_title(kind: str, stype: str, facts: dict) -> tuple[str, bool]:
@@ -93,7 +97,7 @@ def slide_title(kind: str, stype: str, facts: dict) -> tuple[str, bool]:
     if kind == "win":
         return (f"{facts['P1']} WINS BY {gap:.3f} S" if gap else f"{facts['P1']} WINS"), True
     if kind == "telemetry":
-        return (f"WHERE {facts['P1']} FOUND {_short(gap)} S" if gap else f"{facts['P1']} VS {facts['P2']}"), True
+        return (f"WHERE {facts['P1']} FOUND {_short(gap)}\u00a0S" if gap else f"{facts['P1']} VS {facts['P2']}"), True
     return "TITLE TODO", False
 
 
@@ -146,6 +150,8 @@ def post_toml(meeting: dict, stype: str, facts: dict, long_run: str | None = Non
 
 
 # Titelbild: entsteht automatisch neben dem Video – Texte hier überschreiben (Zeilen einkommentieren)
+OPENER_HINT = ['# opener = "blender"          # 3D-Anfang mit Blender (Auto-Modell, Gelände) statt matplotlib',
+               '# opener_quality = "preview"  # "final" (Standard) oder "preview" (schneller) – siehe stintlab/reels/blender_opener.py']
 COVER_HINT = ["# Titelbild (reel_XX_..._cover.png) – Standardtexte aus den Daten, zum Ändern einkommentieren:",
               "# [reels.cover]",
               '# title  = "..."',
@@ -153,7 +159,18 @@ COVER_HINT = ["# Titelbild (reel_XX_..._cover.png) – Standardtexte aus den Dat
               '# sub    = "..."']
 
 
-def reel_toml(meeting: dict, stype: str, facts: dict, compare: dict | None = None) -> str | None:
+def opener_lines(opener: str = "blender", quality: str = "final") -> list[str]:
+    """Zeilen für den 3D-Anfang eines Reels in der post.toml: Blender (Standard von weekend.py) oder nur der Hinweis."""
+    if opener != "blender":
+        return OPENER_HINT
+    lines = ['opener   = "blender"      # 3D-Anfang mit Blender (Auto-Modell, Gelände); "matplotlib" = altes Bild']
+    if quality != "final":
+        lines.append(f'opener_quality = "{quality}"')
+    return lines
+
+
+def reel_toml(meeting: dict, stype: str, facts: dict, compare: dict | None = None, opener: str = "matplotlib",
+              opener_quality: str = "final") -> str | None:
     """Inhalt der post.toml für die Reels einer Session (oder None).
     compare: Vorjahres-Qualifying (stintlab.compare.fetch_quali + "year") → zusätzlicher
     Ghost-Lap-Reel „Pole dieses Jahr vs. Pole Vorjahr“."""
@@ -173,6 +190,7 @@ def reel_toml(meeting: dict, stype: str, facts: dict, compare: dict | None = Non
             lines.append(f"{k} = {_toml_value(v)}")
         lines.append(f"hook     = {_toml_value(hook.format(**fmt))}   # TODO schärfen")
         lines.append(f"result   = {_toml_value(result.format(**fmt))}")
+        lines += opener_lines(opener, opener_quality)
         lines += COVER_HINT
         lines.append("")
     if compare and stype == "Q":
@@ -186,5 +204,5 @@ def reel_toml(meeting: dict, stype: str, facts: dict, compare: dict | None = Non
                   f"compare  = {{ meeting_key = {compare['meeting_key']} }}",
                   "open_at  = 0          # 3D-Anfang am Start der Runde (Vorjahr als halbtransparenter Geist)",
                   "# replay_km   = 5.2   # Zeitlupe an eine Stelle legen (Standard: größte Abstandsänderung)",
-                  '# replay_note = "..."  # eine Zeile Erklärung in der Zeitlupe', *COVER_HINT, ""]
+                  '# replay_note = "..."  # eine Zeile Erklärung in der Zeitlupe', *opener_lines(opener, opener_quality), *COVER_HINT, ""]
     return "\n".join(lines)

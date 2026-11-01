@@ -335,11 +335,18 @@ def render_chances(ax, data: dict) -> list[dict]:
             _text(ax, 0.995, yc, detail, fontsize=8 * k, family=num, color=COLORS["muted"], va="center",
                   ha="right", keep=False)
             y -= step
+    n_races = len(data.get("races", []))
     if hist:
-        note = (f"Assessment from data, not a prediction · 75 % race pace of the last {len(data.get('races', []))} "
+        note = (f"Assessment from data, not a prediction · 75 % race pace of the last {n_races} "
                 f"races (newest counts most)\n+ 25 % pace here in {hist['year']} · values = % gap to the fastest team")
     else:
-        note = (f"Assessment from data, not a prediction · race pace of the last {len(data.get('races', []))} "
+        note = (f"Assessment from data, not a prediction · race pace of the last {n_races} "
                 f"races (newest counts most)\nno recent race here to compare · values = % gap to the fastest team")
-    _text(ax, 0.0, 0.035, note, fontsize=7.5 * k, color=COLORS["muted"], va="center", linespacing=1.5)
+    note += f"\nArrows = pace trend over the last {n_races} races (green = better, red = worse)"
+    # Ehrlichkeit: Führt die Strecken-Gewichtung zu einer anderen Spitze als die reine Form, sagen wir das
+    form_best = min(rows, key=lambda r: r["form"])
+    if hist and form_best["team"] != rows[0]["team"]:
+        note += (f"\n{short_team(rows[0]['team'])} lead only through the 2025 pace here · "
+                 f"on recent form alone {short_team(form_best['team'])} are ahead")
+    _text(ax, 0.0, 0.0, note, fontsize=7.5 * k, color=COLORS["muted"], va="center", linespacing=1.5)
     return rows

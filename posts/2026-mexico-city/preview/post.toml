@@ -1,0 +1,25 @@
+# Race Preview Mexico City 2026 – erzeugt von preview.py, Titel frei änderbar
+
+[session]
+meeting_key = 1298
+type = "PREVIEW"
+
+[[slides]]
+analysis = "preview_track"
+title = "Who can win in Mexico City?"
+subtitle = "What to know first · last race here in 2025 · corner numbers as used by F1"
+
+[[slides]]
+analysis = "preview_weather"
+title = "Mexico City weekend forecast"
+subtitle = "Friday to Sunday at the circuit · local times"
+
+[[slides]]
+analysis = "preview_form"
+title = "Red Bull and Ferrari are level"
+subtitle = "Team race pace in Kuala Lumpur, Marina Bay, Austin · newest race counts most"
+
+[[slides]]
+analysis = "preview_chances"
+title = "Ferrari edge it, but only barely"
+subtitle = "Recent form plus 2025 pace here · an assessment, not a prediction"

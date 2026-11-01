@@ -79,6 +79,10 @@ def main() -> None:
     parser.add_argument("--year", type=int, default=date.today().year)
     parser.add_argument("--refresh", action="store_true", help="Daten neu von OpenF1 laden")
     parser.add_argument("--no-reels", action="store_true", help="Reels auslassen (dauern je ~1–2 min)")
+    parser.add_argument("--opener", choices=("blender", "matplotlib"), default="blender",
+                        help="3D-Anfang der NEU angelegten Reels (Standard blender; bestehende post.toml bleiben unverändert)")
+    parser.add_argument("--opener-quality", choices=("final", "preview"), default="final",
+                        help="Blender-Qualität: final (Standard) oder preview (schneller)")
     args = parser.parse_args()
 
     meeting = openf1.find_meeting(args.query, args.year, refresh=args.refresh)
@@ -104,7 +108,7 @@ def main() -> None:
     compare = None
     if args.session == "Q" and not args.no_reels and not (base / "quali-reel" / "post.toml").exists():
         compare = previous_quali(meeting, args.refresh)
-    reels = reel_toml(meeting, args.session, facts, compare)
+    reels = reel_toml(meeting, args.session, facts, compare, args.opener, args.opener_quality)
     if reels and not args.no_reels:
         configs.append((base / f"{FOLDERS[args.session]}-reel" / "post.toml", reels))
 

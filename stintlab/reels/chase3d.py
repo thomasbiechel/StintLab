@@ -210,6 +210,7 @@ class Scene:
         self.light = light_for(data.get("session_key"), self.t0s.get(rd, self.t0))
         self.rain = False                 # Regenstriche + Gischt (configure: rain = true)
         self._env = None
+        self.blender = None               # BlenderFrames, wenn das Reel opener = "blender" hat (blender_opener.py)
 
     def configure(self, reel: dict) -> None:
         """scenery / light aus der post.toml übernehmen (vor dem ersten Bild)."""
@@ -741,8 +742,14 @@ def draw_car(ax, cam: Camera, pos, fw, col, name, z, label_side: int = 1, alpha:
                                      linewidths=0.3, zorder=z + 0.5))
 
     cx, cy, _ = cam.proj(pos + [0, 0, 0.6 * CAR])
-    lx, ly = cx[0] + 0.13 * label_side, cy[0] + 0.02
-    ax.plot([cx[0], lx - 0.01 * label_side], [cy[0], ly], color=col, linewidth=1.2, zorder=z + 1)
+    draw_label(ax, col, name, cx[0], cy[0], z, label_side)
+
+
+def draw_label(ax, col, name, cx: float, cy: float, z: float, label_side: int = 1) -> None:
+    """Namensschild neben dem Auto (Bildkoordinaten cx, cy des Autos) – auch für Blender-Bilder."""
+    rgb = np.array(to_rgb(col))
+    lx, ly = cx + 0.13 * label_side, cy + 0.02
+    ax.plot([cx, lx - 0.01 * label_side], [cy, ly], color=col, linewidth=1.2, zorder=z + 1)
     r, g, b = rgb
     label_ink = "black" if 0.299 * r + 0.587 * g + 0.114 * b > 0.6 else "white"   # weißes Auto → schwarze Schrift
     ax.text(lx, ly, name, fontsize=13, fontweight="bold", color=label_ink, ha="left" if label_side > 0 else "right",
@@ -753,6 +760,10 @@ def draw_car(ax, cam: Camera, pos, fw, col, name, z, label_side: int = 1, alpha:
 def draw_scene(ax, scene: Scene, t: float) -> float:
     """Zeichnet ein Bild zur Zeit t (Sekunden ab t0). Gibt den laufenden Abstand zurück."""
     global _FOG
+    if getattr(scene, "blender", None) is not None:        # opener = "blender": fertiges Blender-Bild + Namensschilder
+        done = scene.blender.draw(ax, t)
+        if done is not None:
+            return done
     ax.clear()
     ax.axis("off")
     cam = Camera(scene, t)
